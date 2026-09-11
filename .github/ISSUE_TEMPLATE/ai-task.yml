@@ -1,0 +1,115 @@
+name: AI Development Task
+description: Define an implementation task that can be executed by a human or coding agent.
+title: "[Task] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep this task small enough for one behavioral change when practical.
+        The Issue is the primary task context for coding agents.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What observable outcome should exist when this task is complete?
+      placeholder: "Example: Ground Station Simulator rejects antenna slew commands that exceed configured slew-rate limits."
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Minimal context
+      description: Link only the ADRs, architecture docs, interfaces, or prior issues required to do this task.
+      placeholder: |
+        - docs/architecture/...
+        - ADR-...
+        - Related issue/PR...
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included?
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: State what must not be expanded into this task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Write externally verifiable criteria. Prefer one criterion per line.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk class
+      description: Use docs/ai/10-risk-levels.md. Choose the highest class that applies.
+      options:
+        - R0 — Mechanical
+        - R1 — Local
+        - R2 — Domain
+        - R3 — System
+        - R4 — Critical
+    validations:
+      required: true
+
+  - type: textarea
+    id: components
+    attributes:
+      label: Affected components
+      description: Services, bounded contexts, packages, interfaces, deployment units, or data stores expected to change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Architecture and domain constraints
+      description: Add only constraints specific to this task; do not repeat AGENTS.md.
+      placeholder: "Example: Domain layer must remain independent of infrastructure; simulation must remain deterministic."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime / Kubernetes resource impact
+      options:
+        - None expected
+        - Expected — budget required
+        - Unknown — must be investigated
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      description: What tests, checks, simulations, measurements, or manual verification will prove the acceptance criteria?
+    validations:
+      required: true
+
+  - type: textarea
+    id: hazards
+    attributes:
+      label: Known hazards or uncertainty
+      description: Time/orbit/frame correctness, command/control impact, data migration, concurrency, external interfaces, security, etc.
+    validations:
+      required: false
