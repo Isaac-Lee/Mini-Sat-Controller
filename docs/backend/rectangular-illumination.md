@@ -32,5 +32,12 @@ one outbox event, and conflicting retry rejection. This DB test does not enforce
 method security; deployed HTTP validation remains a separate step.
 
 The focused run passed 37 tests across six classes with zero failures/errors/skips
-(`2026-09-12`, local log `/private/tmp/msc-rectangular-illumination.log`). This change has
-not yet been rolled out to the running Flight Dynamics deployment.
+(`2026-09-12`, local log `/private/tmp/msc-rectangular-illumination.log`). Flight Dynamics
+was then rolled out independently in the local kind cluster. All ten service Deployments
+remained ready, with Planning retaining two replicas and the others one each.
+
+`scripts/verify-rectangular-illumination.py` passed nine deployed checks: requester denial,
+preserved query/scope/tolerances, an illuminated noon rectangle, identical idempotent replay,
+persisted read, changed-payload conflict, rejection of a near-zenith illumination threshold,
+the 24-hour search limit, and the original five-point result scope. Local evidence is saved
+in `.local/rectangular-illumination-verification.json`; credentials are never printed.
