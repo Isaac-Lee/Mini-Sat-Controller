@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import msc.contracts.GroundContracts.*;
 import msc.contracts.TaskingContracts.*;
 import msc.domain.shared.Ids.*;
 import msc.domain.spacecraftcontrol.CommandReleasePolicy;
@@ -341,5 +342,57 @@ class SimulationDispatchApiTest {
         store
             .find("simulation-bound-execution", id, SimulationExecutionBindingApi.Bound.class)
             .isEmpty());
+  }
+
+  @Test
+  void cancellingBookedOperationAfterReleasePreventsItsDelivery() {
+    var booking =
+        new Booking(
+            "ground",
+            new Reservation(
+                "station", 1, "sat", prepared.sources().schedule().key().horizon(), "access", 1),
+            BookingStatus.CONFIRMED,
+            "simulator",
+            "test");
+    doAnswer(
+            inv -> {
+              String path = inv.getArgument(1);
+              var assignment =
+                  prepared.sources().schedule().assignments().stream()
+                      .filter(a -> path.contains(a.activityId().value()))
+                      .findFirst()
+                      .orElseThrow();
+              boolean operation = path.contains("simulation-operations");
+              var body = new HashMap<String, Object>();
+              body.put("environment", "SIMULATION");
+              body.put(
+                  "evaluationModel",
+                  operation ? "SIMULATION_V1_OPERATION_REVIEW" : "SIMULATION_V1_SAMPLED_REVIEW");
+              body.put("requestRevision", 1);
+              body.put("runId", assignment.runId().value());
+              body.put("sourceRunId", assignment.runId().value());
+              body.put("candidateId", operation ? assignment.candidateId().value() : "image-only");
+              body.put("activityId", assignment.activityId().value());
+              body.put("sourceImageDecision", assignment.requestId().value() + ":1");
+              body.put("schedule", prepared.sources().schedule());
+              body.put("booking", booking);
+              return json.tree(Map.of("body", body));
+            })
+        .when(http)
+        .get(eq("planning"), anyString(), eq(JsonNode.class));
+    when(http.get(eq("ground-operations"), eq("/internal/bookings/ground"), eq(Booking.class)))
+        .thenReturn(booking);
+    release();
+    when(http.get(eq("ground-operations"), eq("/internal/bookings/ground"), eq(Booking.class)))
+        .thenReturn(
+            new Booking(
+                booking.id(),
+                booking.request(),
+                BookingStatus.CANCELLED,
+                "simulator",
+                "cancelled"));
+    assertThrows(ApiException.class, () -> api.dispatch(id));
+    verify(http, never())
+        .post(eq("simulator"), eq(loadPath()), any(), anyString(), eq(JsonNode.class));
   }
 }

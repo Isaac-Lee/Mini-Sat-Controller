@@ -23,7 +23,10 @@ def main():
     parser.add_argument('--with-camera', action='store_true', help='Verify automatic sampled camera evaluation (requires --with-runs)')
     parser.add_argument('--with-simulation-commit', action='store_true', help='Verify V1 schedule commitment and Control preparation (requires --with-camera)')
     parser.add_argument('--with-simulation-dispatch', action='store_true', help='Execute and reconcile the prepared V1 simulation load (requires --with-simulation-commit)')
+    parser.add_argument('--with-v1-downlink', action='store_true', help='Continue request-bound execution through ground downlink and synthetic product (requires --with-simulation-dispatch)')
     args = parser.parse_args()
+    if args.with_v1_downlink and not args.with_simulation_dispatch:
+        parser.error('--with-v1-downlink requires --with-simulation-dispatch')
     if args.with_simulation_dispatch and not args.with_simulation_commit:
         parser.error('--with-simulation-dispatch requires --with-simulation-commit')
     if args.with_simulation_commit and not args.with_camera:
@@ -182,7 +185,7 @@ def main():
             result['automaticCamera'] = importlib.import_module('verify-planning-camera-worker').verify(call, published_run, camera_source)
             result['passed'] += ['automatic camera work without manual evaluation', 'candidate AOI and exact model version binding']
         if args.with_simulation_commit:
-            result['simulationSchedule'] = importlib.import_module('verify-simulation-schedule').verify(call, published_run, run, args.with_simulation_dispatch)
+            result['simulationSchedule'] = importlib.import_module('verify-simulation-schedule').verify(call, published_run, run, args.with_simulation_dispatch, args.with_v1_downlink)
             result['passed'] += ['V1 selected schedule persists with request binding', 'Tasking scheduled progress', 'Control prepares committed schedule']
         (ROOT / '.local/planning-search-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))

@@ -114,8 +114,37 @@ public class SimulationDispatchApi {
                   + live.request().revision(),
               JsonNode.class);
       var body = decision.path("body");
+      boolean operation =
+          !assignment.candidateId().value().equals(body.path("candidateId").asText());
+      if (operation) {
+        String sourceRunId = body.path("runId").asText();
+        decision =
+            http.get(
+                "planning",
+                "/internal/planning/simulation-operations/"
+                    + segment(assignment.activityId().value()),
+                JsonNode.class);
+        body = decision.path("body");
+        if (!assignment.activityId().value().equals(body.path("activityId").asText())
+            || !sourceRunId.equals(body.path("sourceRunId").asText())
+            || !(requestId + ":" + live.request().revision())
+                .equals(body.path("sourceImageDecision").asText()))
+          throw ApiException.conflict("Operation is not linked to this imaging request");
+        var booked =
+            json.convert(body.path("booking"), msc.contracts.GroundContracts.Booking.class);
+        var currentBooking =
+            http.get(
+                "ground-operations",
+                "/internal/bookings/" + segment(booked.id()),
+                msc.contracts.GroundContracts.Booking.class);
+        if (!booked.id().equals(currentBooking.id())
+            || currentBooking.status() != msc.contracts.GroundContracts.BookingStatus.CONFIRMED
+            || !booked.request().equals(currentBooking.request()))
+          throw ApiException.conflict("Downlink ground booking is no longer confirmed");
+      }
       if (!"SIMULATION".equals(body.path("environment").asText())
-          || !"SIMULATION_V1_SAMPLED_REVIEW".equals(body.path("evaluationModel").asText())
+          || !(operation ? "SIMULATION_V1_OPERATION_REVIEW" : "SIMULATION_V1_SAMPLED_REVIEW")
+              .equals(body.path("evaluationModel").asText())
           || body.path("requestRevision").asLong() != live.request().revision()
           || !assignment.runId().value().equals(body.path("runId").asText())
           || !assignment.candidateId().value().equals(body.path("candidateId").asText())

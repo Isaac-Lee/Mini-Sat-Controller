@@ -3,7 +3,7 @@
 import time
 
 
-def verify(call, run, key, with_dispatch=False):
+def verify(call, run, key, with_dispatch=False, with_downlink=False):
     candidate = run['run']['candidates'][0]
     body = {'candidateId': candidate['id']['value'], 'cameraModelVersion': 1,
             'expectedScheduleVersion': 0, 'reviewReference': 'V1-sampled-simulation-review'}
@@ -65,5 +65,5 @@ def verify(call, run, key, with_dispatch=False):
 
     if with_dispatch:
         import importlib
-        result['execution'] = importlib.import_module('verify-simulation-dispatch').execute(call, run, prepared, correlation, key)
+        result['execution'] = importlib.import_module('verify-simulation-dispatch').execute(call, run, prepared, correlation, key, with_downlink)
     return result

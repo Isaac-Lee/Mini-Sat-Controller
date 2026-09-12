@@ -56,6 +56,19 @@ class SimulationScheduleApiTest {
             msc.domain.planning.PlanningDataSnapshot.Input, PlanningInputs.Evidence>(
             msc.domain.planning.PlanningDataSnapshot.Input.class);
     source.inputs().forEach((input, evidence) -> inputs.put(input, wireEvidence(evidence)));
+    var rawOperations = new PlanningOperationsTest().captured();
+    var catalogMap =
+        new java.util.EnumMap<
+            msc.contracts.MissionCatalogBindingContracts.Role, PlanningInputs.Evidence>(
+            msc.contracts.MissionCatalogBindingContracts.Role.class);
+    rawOperations
+        .catalogs()
+        .forEach((role, evidence) -> catalogMap.put(role, wireEvidence(evidence)));
+    var operations =
+        new PlanningOperations.Captured(
+            wireEvidence(rawOperations.bindings()),
+            wireEvidence(rawOperations.resourceProfiles()),
+            catalogMap);
     var asset =
         new PlanningInputs.Asset(
             source.spacecraftId(),
@@ -65,7 +78,7 @@ class SimulationScheduleApiTest {
             source.pointGeometry().map(this::wireEvidence),
             source.simulationModel().map(this::wireEvidence),
             source.activityOptions(),
-            source.operations());
+            Optional.of(operations));
     var attempt = fixture.runs.attempt(UUID.randomUUID().toString(), 1, asset);
     run = new PlanningRuns(store, json).derive(attempt, asset);
     store.transaction(
@@ -217,5 +230,100 @@ class SimulationScheduleApiTest {
         1,
         db.queryForObject(
             "SELECT count(*) FROM state_head WHERE kind='mission-schedule'", Integer.class));
+  }
+
+  msc.contracts.GroundContracts.Booking booking(
+      msc.contracts.GroundContracts.BookingStatus status) {
+    return new msc.contracts.GroundContracts.Booking(
+        "booking",
+        new msc.contracts.GroundContracts.Reservation(
+            "station",
+            1,
+            run.spacecraftId(),
+            new msc.domain.time.TimeWindow(MissionInstant.tai(1110), MissionInstant.tai(1140)),
+            "access",
+            1),
+        status,
+        "simulator",
+        "test");
+  }
+
+  SimulationDownlinkScheduleApi.Commit downlinkCommand() {
+    return new SimulationDownlinkScheduleApi.Commit(
+        "booking",
+        new msc.domain.time.TimeWindow(MissionInstant.tai(1120), MissionInstant.tai(1130)),
+        0,
+        "downlink review");
+  }
+
+  @Test
+  void downlinkKeepsImagingHistoryAndRecomputesCombinedReservoirs() {
+    commit("image");
+    when(http.get(
+            eq("ground-operations"), anyString(), eq(msc.contracts.GroundContracts.Booking.class)))
+        .thenReturn(booking(msc.contracts.GroundContracts.BookingStatus.CONFIRMED));
+    var downlink = new SimulationDownlinkScheduleApi(store, json, http, () -> now, db);
+    var result = downlink.commit(run.id(), downlinkCommand(), "downlink", actor);
+    var saved = json.convert(result.path("body"), SimulationDownlinkScheduleApi.Decision.class);
+    assertEquals("SIMULATION_V1_OPERATION_REVIEW", saved.evaluationModel());
+    assertNotEquals(run.id(), saved.runId());
+    assertEquals(run.id(), saved.sourceRunId());
+    assertEquals(saved.proposal().id(), saved.schedule().assignments().getFirst().runId());
+    var definition =
+        json.convert(saved.catalog().value(), msc.contracts.CatalogContracts.CatalogEntry.class)
+            .activity();
+    assertDoesNotThrow(
+        () ->
+            msc.domain.planning.PlanningRun.restore(saved.proposal(), (id, version) -> definition));
+    assertEquals(run.requestId() + ":1", saved.sourceImageDecision());
+    assertEquals(
+        "booking",
+        saved.schedule().resourceValidation().externalReservations().getFirst().bookingReference());
+    assertEquals(
+        0, saved.resources().forecast().orElseThrow().trajectory().getLast().storedMb(), 1e-9);
+    assertEquals(
+        2,
+        db.queryForObject(
+            "SELECT count(*) FROM state_head WHERE kind='mission-schedule'", Integer.class));
+    assertEquals(
+        json.fingerprint(result),
+        json.fingerprint(downlink.commit(run.id(), downlinkCommand(), "downlink", actor)));
+    assertEquals(
+        json.fingerprint(run),
+        json.fingerprint(
+            store.require("planning-run", run.id(), PlanningRuns.Published.class).body()));
+  }
+
+  @Test
+  void unconfirmedBookingAndFailedEventCannotLeaveDownlinkSchedule() {
+    commit("image");
+    var downlink = new SimulationDownlinkScheduleApi(store, json, http, () -> now, db);
+    when(http.get(
+            eq("ground-operations"), anyString(), eq(msc.contracts.GroundContracts.Booking.class)))
+        .thenReturn(booking(msc.contracts.GroundContracts.BookingStatus.CANCELLED));
+    assertThrows(
+        ApiException.class, () -> downlink.commit(run.id(), downlinkCommand(), "downlink", actor));
+    when(http.get(
+            eq("ground-operations"), anyString(), eq(msc.contracts.GroundContracts.Booking.class)))
+        .thenReturn(booking(msc.contracts.GroundContracts.BookingStatus.CONFIRMED));
+    db.execute(
+        "ALTER TABLE outbox ADD CONSTRAINT reject_downlink CHECK (event_type <>"
+            + " 'ScheduleVersionCommitted') NOT VALID");
+    try {
+      assertThrows(
+          org.springframework.dao.DataIntegrityViolationException.class,
+          () -> downlink.commit(run.id(), downlinkCommand(), "downlink", actor));
+    } finally {
+      db.execute("ALTER TABLE outbox DROP CONSTRAINT reject_downlink");
+    }
+    assertEquals(
+        1,
+        db.queryForObject(
+            "SELECT count(*) FROM state_head WHERE kind='mission-schedule'", Integer.class));
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM state_head WHERE kind='simulation-v1-operation'", Integer.class));
+    assertNotNull(downlink.commit(run.id(), downlinkCommand(), "downlink", actor).path("body"));
   }
 }

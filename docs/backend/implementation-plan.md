@@ -227,3 +227,14 @@ can be bound to the exact released command content, ledger hash and original req
 The guided verifier continues through IMAGE execution, lost ACK/reconciliation and synthetic
 payload creation. See [V1 Control delivery](simulation-command-delivery-v1.md). Ground downlink
 and request-product fulfillment integration remain outstanding.
+
+### V1 request-bound ground downlink integration (2026-09-12)
+
+Planning can derive a separate DOWNLINK operation from the selected imaging run's pinned
+catalogs and a confirmed Ground Operations booking. It retains the imaging history and evaluates
+combined resources before atomically saving the operation schedule/evidence. Control accepts
+that operation decision and rechecks its booking before delivery. The guided scenario continues
+from the actual request-bound IMAGE payload through contact prediction/booking, DOWNLINK,
+Acquisition completion, Product-owned bytes and synthetic preview. See
+[V1 downlink scheduling](simulation-downlink-schedule-v1.md). Final requester-facing fulfillment
+binding remains outstanding until that endpoint and guided review are verified.

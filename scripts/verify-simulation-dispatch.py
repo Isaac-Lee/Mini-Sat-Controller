@@ -5,7 +5,7 @@ import time
 import uuid
 
 
-def execute(call, run, prepared, correlation, key):
+def execute(call, run, prepared, correlation, key, with_downlink=False):
     craft, load = run['spacecraftId'], prepared['body']['load']
     load_id = prepared['id']
     call(8104, 'POST', '/api/authority-policies', {'expectedVersion': 0, 'policy': {
@@ -74,7 +74,12 @@ def execute(call, run, prepared, correlation, key):
         time.sleep(.3)
     else:
         raise AssertionError(('Synthetic payload not produced', payload))
-    return {'scenarioId': scenario_id, 'releasedLoadId': load_id,
+    result = {'scenarioId': scenario_id, 'releasedLoadId': load_id,
             'delivery': delivery['body']['status'], 'lostAckBelief': unknown['belief'],
             'executionStatus': bound['body']['status'], 'requestIds': bound['body']['requestIds'],
             'payloadId': payload_id, 'payloadSha256': payload['body']['sha256']}
+
+    if with_downlink:
+        import importlib
+        result['downlink'] = importlib.import_module('verify-v1-downlink').execute(call, run, result, prepared, correlation, key)
+    return result

@@ -54,8 +54,9 @@ or silently convert missing evidence into a scientific claim.
 Public orbit, pointing, sampled footprints, automatic Planning evidence, telemetry, ground
 booking, synthetic execution/downlink, Acquisition and Product APIs already have individual
 verification paths. Schedule commitment and Control preparation/approval now use the selected request. V1 Control
-delivery, IMAGE execution, lost ACK reconciliation and execution binding have passed live API verification. The remaining priority is connecting ground
-downlink and product/progress back to that same request.
+delivery, IMAGE execution, lost ACK reconciliation and execution binding have passed live API verification. Ground downlink, Acquisition completion and Product generation now pass for the same request-bound
+payload. The remaining priority is requester-facing result lookup and completion status, followed
+by the final guided review and completion audit.
 Successful isolated scripts alone do not prove that connected V1 scenario is finished.
 
 Completion means the user can run the guided scenario and inspect each stage with persistent
