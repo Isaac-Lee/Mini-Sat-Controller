@@ -1,0 +1,10 @@
+**/target/
+.idea/
+*.iml
+.DS_Store
+.local/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example

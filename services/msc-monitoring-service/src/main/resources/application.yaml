@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: monitoring
+  config:
+    import: classpath:application-platform.yaml
+msc:
+  events:
+    consume: true

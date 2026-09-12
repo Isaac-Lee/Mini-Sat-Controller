@@ -1,0 +1,64 @@
+spring:
+  datasource:
+    url: ${MSC_DATABASE_URL}
+    username: ${MSC_DATABASE_USER}
+    password: ${MSC_DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${MSC_DATABASE_POOL_SIZE:8}
+      connection-timeout: 5000
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${MSC_RABBIT_HOST:localhost}
+    port: ${MSC_RABBIT_PORT:5672}
+    username: ${MSC_RABBIT_USER}
+    password: ${MSC_RABBIT_PASSWORD}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        prefetch: 8
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-interval: 10000
+          multiplier: 2
+          max-attempts: 4
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+server:
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      group:
+        readiness:
+          include: readinessState,db,rabbit
+msc:
+  security:
+    mode: ${MSC_SECURITY_MODE:oidc}
+    issuer-uri: ${MSC_OIDC_ISSUER_URI:}
+    audience: ${MSC_OIDC_AUDIENCE:msc-api}
+    local:
+      admin-password: ${MSC_LOCAL_ADMIN_PASSWORD:}
+      operator-password: ${MSC_LOCAL_OPERATOR_PASSWORD:}
+      requester-password: ${MSC_LOCAL_REQUESTER_PASSWORD:}
+      service-password: ${MSC_SERVICE_PASSWORD:}
+  time:
+    source: ${MSC_TIME_SOURCE}
+    utc-tai-offset-seconds: ${MSC_TIME_OFFSET_SECONDS}
+    valid-from-utc: ${MSC_TIME_VALID_FROM}
+    valid-until-utc: ${MSC_TIME_VALID_UNTIL}
