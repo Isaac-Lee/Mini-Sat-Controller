@@ -226,7 +226,7 @@ class SimulationScenarioApiIT {
     }
   }
 
-  private SimulationCommandApi.Submit command(Create scenario, long tick, double duration) {
+  SimulationCommandApi.Submit command(Create scenario, long tick, double duration) {
     var catalog =
         new msc.contracts.CatalogContracts.CatalogEntry(
             "image",
