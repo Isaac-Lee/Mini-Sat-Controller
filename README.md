@@ -43,6 +43,8 @@ additional NORAD IDs without changing the propagation code.
 [Planning input collection](docs/backend/planning-inputs.md) now consumes real request
 events and pins approved simulation agility models; the scheduling engine remains in progress.
 
+다른 컴퓨터에서 BE·FE를 함께 실행하려면 [로컬 실험 시작 안내](docs/backend/cross-machine-quickstart.md)를 따르세요.
+
 ## Build and test
 
 Install a **JDK 21** and point `JAVA_HOME` to it (on macOS with a registered JDK:

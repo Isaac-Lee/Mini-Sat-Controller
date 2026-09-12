@@ -7,7 +7,6 @@ required=(
   ".github/ISSUE_TEMPLATE/ai-task.yml"
   ".github/pull_request_template.md"
   ".github/CODEOWNERS"
-  ".github/workflows/ai-harness-policy.yml"
   "docs/ai/10-risk-levels.md"
   "docs/ai/20-model-routing.md"
   "docs/ai/30-context-budget.md"

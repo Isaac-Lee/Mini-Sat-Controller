@@ -26,7 +26,8 @@ Follow [the operating playbook](70-operating-playbook.md) for each task and
 Human merge authorization is required for every risk class. Required approving
 reviews and Code Owner reviews stay disabled until a second human maintainer joins.
 
-The only Harness-specific CI workflow is AI Harness Policy.
+The AI Harness Policy Action was removed at the maintainer's request on 2026-09-13.
+PR metadata and review evidence are documented manually; they are not enforced by an Action.
 Add real build, test, and static-analysis checks when product tooling exists;
 do not require nonexistent checks.
 
@@ -43,7 +44,7 @@ Paths below are relative to the repository root.
 - `CLAUDE.md` — imports `AGENTS.md` and adds Claude-specific review behavior.
 - `.github/ISSUE_TEMPLATE/ai-task.yml` — task specification and risk classification.
 - `.github/pull_request_template.md` — PR evidence, AI execution metadata, and review gates.
-- `.github/workflows/ai-harness-policy.yml` — validates required PR metadata and review evidence.
+- `scripts/validate-ai-harness.sh` — checks the local Harness files and instruction structure.
 - `.github/CODEOWNERS` — global ownership by @Isaac-Lee.
 - `docs/ai/10-risk-levels.md` — R0–R4 classification and review gates.
 - `docs/ai/20-model-routing.md` — GPT-first model routing and escalation policy.
