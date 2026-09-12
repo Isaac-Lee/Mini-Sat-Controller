@@ -100,6 +100,35 @@ class SpacecraftEclipseApiIT {
         new IlluminationApi.TargetIlluminationRequest("different-craft", query), "rectangle-key", actor));
   }
 
+  @Test
+  void intervalCalculationUsesPinnedOwnerAssumptionsAndPersistsReplay() {
+    var http = org.mockito.Mockito.mock(ServiceHttp.class);
+    var intervalApi = new SolarIntervalApi(store, http, json, frames);
+    var start = frames.fromUtc("2026-09-01T12:00:00");
+    var horizon = new TimeWindow(start, start.plus(new MissionDuration(10_000_000_000L)));
+    var area = new msc.contracts.IlluminationContracts.Aoi("area", -10, 10, -10, 10, 0);
+    var assumptions = new msc.contracts.SolarIntervalContracts.Assumptions("sat", "m1", "SIMULATION",
+        msc.orbit.OrekitIlluminationPredictor.SOLAR_MODEL, frames.digest(), horizon, area,
+        .001, .0001, 5, "explicit integration assumption only");
+    org.mockito.Mockito.when(http.get("mission-definition", "/internal/solar-interval-assumptions/sat/versions/2", JsonNode.class))
+        .thenReturn(json.tree(new StateStore.State<>("sat", 2, assumptions)));
+    var request = new SolarIntervalApi.Request("sat", 2,
+        new msc.contracts.IlluminationContracts.TargetIlluminationQuery(area, horizon, 10));
+    var first = intervalApi.calculate(request, "interval", actor);
+    var saved = intervalApi.read(first.path("id").asText());
+    assertEquals(SolarIntervalApi.Outcome.SUPPORTED_BY_DECLARED_ASSUMPTIONS, saved.outcome());
+    assertEquals(assumptions, saved.assumptions().body());
+    assertEquals(json.fingerprint(saved.assumptions()), saved.assumptionsSha256());
+    org.mockito.Mockito.reset(http);
+    assertEquals(json.fingerprint(first), json.fingerprint(intervalApi.calculate(request, "interval", actor)));
+    org.mockito.Mockito.verifyNoInteractions(http);
+    assertEquals(1, store.list("solar-interval", 100).size());
+    org.mockito.Mockito.when(http.get("mission-definition", "/internal/solar-interval-assumptions/sat/versions/2", JsonNode.class))
+        .thenReturn(json.tree(new StateStore.State<>("sat", 3, assumptions)));
+    assertThrows(ApiException.class, () -> intervalApi.calculate(request, "wrong-version", actor));
+    assertEquals(1, store.list("solar-interval", 100).size());
+  }
+
   /** Same SPACEEYE-T1 / NORAD 63229 fixture already pinned in {@code GeneralPerturbationsIT}. */
   static MeanElements spaceeye(int noradId) {
     return new MeanElements(
