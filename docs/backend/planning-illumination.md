@@ -32,3 +32,13 @@ skips (`2026-09-12`, `/private/tmp/msc-planning-illumination.log`). The two new 
 HTTP/store boundaries and verify candidate-derived queries, conditional evidence retention,
 wrong owner revision/query rejection and unchanged overall feasibility. They do not establish
 HTTP authorization, DB transaction behavior or deployed cross-service evaluation for this API.
+
+A subsequent PostgreSQL 17.6 Testcontainers check passed four illumination tests across two
+classes (`2026-09-12`, `/private/tmp/msc-planning-illumination-persistence.log`). The two
+persistence tests use real migrations and transactions with mocked owner HTTP. They prove
+assessment readback, same-key replay after controller reconstruction without owner calls,
+changed-request key conflict, different-key deduplication of history/outbox, and rollback of
+assessment/history/idempotency when outbox insertion fails, followed by successful retry.
+JSON readback is compared using canonical fingerprints because Jackson integer node widths
+can differ after PostgreSQL JSONB round trips. This adds DB transaction evidence; HTTP role
+checks and deployed cross-service evaluation remain separate verification requirements.
