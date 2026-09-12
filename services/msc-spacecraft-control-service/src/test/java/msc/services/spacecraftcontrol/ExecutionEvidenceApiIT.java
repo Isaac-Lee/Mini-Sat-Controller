@@ -238,6 +238,50 @@ class ExecutionEvidenceApiIT {
   @org.springframework.test.context.bean.override.mockito.MockitoBean ServiceHttp owners;
 
   @Test
+  void approvalsBindActorAndChecksumAndSupportVersionedRevocation() {
+    var prepared = new CommandCompiler(json).compile(
+        new msc.domain.shared.Ids.CommandLoadId(UUID.randomUUID().toString()), CommandCompilerTest.fixture());
+    String id = prepared.load().id().value();
+    store.transaction(() -> store.create("prepared-command-load", id, prepared));
+    var api = new CommandApprovalApi(store, () -> MissionInstant.tai(990));
+    var one = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("operator1", "unused");
+    var two = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("operator2", "unused");
+    var grant = new CommandApprovalApi.Grant(prepared.load().checksum(), MissionInstant.tai(999), 0);
+    var first = api.grant(id, grant, "grant-one", one);
+    assertEquals(json.fingerprint(first), json.fingerprint(api.grant(id, grant, "grant-one", one)));
+    api.grant(id, grant, "grant-two", two);
+    assertEquals(2, api.read(id).size());
+    var approval = store.require(CommandApprovalApi.kind(id), "operator1",
+        msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body();
+    assertEquals(msc.domain.spacecraftcontrol.CommandReleasePolicy.Binding.of(prepared.load()), approval.binding());
+    assertEquals("operator1", approval.actorId());
+    assertEquals(msc.domain.spacecraftcontrol.CommandReleasePolicy.ApprovalKind.HUMAN, approval.kind());
+    assertThrows(ApiException.class, () -> api.grant(id,
+        new CommandApprovalApi.Grant("wrong", MissionInstant.tai(999), 1), "wrong", one));
+    assertThrows(ApiException.class, () -> api.grant(id,
+        new CommandApprovalApi.Grant(prepared.load().checksum(), MissionInstant.tai(1006), 1), "late", one));
+    assertThrows(ApiException.class, () -> api.revoke(id, new CommandApprovalApi.Revoke(2), "stale", one));
+    var revoked = api.revoke(id, new CommandApprovalApi.Revoke(1), "revoke", one);
+    assertEquals(json.fingerprint(revoked), json.fingerprint(api.revoke(id, new CommandApprovalApi.Revoke(1), "revoke", one)));
+    assertTrue(store.require(CommandApprovalApi.kind(id), "operator1",
+        msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body().revoked());
+    assertFalse(store.require(CommandApprovalApi.kind(id), "operator2",
+        msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body().revoked());
+    api.grant(id, new CommandApprovalApi.Grant(prepared.load().checksum(), MissionInstant.tai(999), 2), "renew", one);
+    assertEquals(3, store.history(CommandApprovalApi.kind(id), "operator1").size());
+    assertTrue(store.require("prepared-command-load", id, CommandCompiler.Prepared.class)
+        .body().load().authorizationEvidenceReference().isEmpty());
+    var headers = new org.springframework.http.HttpHeaders();
+    headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", UUID.randomUUID().toString());
+    for (String user : List.of("requester", "service")) {
+      assertEquals(403, client.withBasicAuth(user, PASSWORD).postForEntity(
+          "/api/command-loads/" + id + "/approvals",
+          new org.springframework.http.HttpEntity<>(grant, headers), String.class).getStatusCode().value());
+    }
+  }
+
+  @Test
   void preparesOnlyOwnerBoundSourcesAndReplaysPersistedArtifact() {
     var source = CommandCompilerTest.fixture();
     org.mockito.Mockito.when(
