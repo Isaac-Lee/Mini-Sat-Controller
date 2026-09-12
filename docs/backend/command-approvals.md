@@ -5,6 +5,8 @@ Control accepts `POST /api/command-loads/{id}/approvals` with `checksum`, `valid
 OPERATOR principals can grant; the actor identity and HUMAN kind are set by the service,
 never taken from a request body. Service/requester principals cannot impersonate human
 approval. ADMIN without the OPERATOR role does not grant human approval either.
+The existing local `admin` account has both ADMIN and OPERATOR roles, so it can grant;
+this is its configured operator authority, not a bypass of the role check.
 
 The checksum must match the immutable prepared load. Approval validity starts at the
 service's injected mission clock and must end after now, no later than the load's commit
@@ -33,5 +35,12 @@ Planning-to-release workflow or deployed positive HTTP approval proof.
 
 The focused run passed 21 tests across the release policy, command compiler and Control
 integration suites with no failures/errors/skips (`2026-09-12`, local log
-`/private/tmp/msc-command-approval.log`). The running Control image has not yet been updated
-with these approval endpoints.
+`/private/tmp/msc-command-approval.log`). Control was then independently rolled out to the
+local kind cluster. All ten service Deployments stayed ready, including Planning's two replicas.
+
+`scripts/verify-command-approvals.py` passed the deployed denial checks for requester/service
+mutation and requester reads, operator/local-admin missing-load rejection, missing approval
+rejection and the internal service boundary. It also reran all six command-preparation and
+previously persisted execution-evidence regression checks. These deployed checks do not
+claim a successful approval of a production-committed schedule; the positive lifecycle
+proof remains the deterministic-clock integration test described above.
