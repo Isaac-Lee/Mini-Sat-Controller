@@ -12,7 +12,7 @@ default branch, with no routine bypass actors.
 Enable:
 - Require a pull request before merging.
 - Require conversation resolution before merge.
-- Require status checks to pass.
+- Require status checks only when an actual retained workflow emits them.
 - Block force pushes.
 - Restrict deletions (block deletion of the protected default branch).
 
@@ -35,41 +35,27 @@ This is a human process gate, not an approving-review rule enforced by GitHub.
 
 ## Required status checks
 
-Require the validate-pr-policy job from the AI Harness Policy workflow
-(.github/workflows/ai-harness-policy.yml). The PR checks view may display it as
-AI Harness Policy / validate-pr-policy; select the actual emitted check context
-in GitHub after its first run, with GitHub Actions as the expected source.
+The maintainer removed the AI Harness Policy Action on 2026-09-13. Do not
+require `validate-pr-policy` or `AI Harness Policy / validate-pr-policy` in a
+branch rule: the workflow no longer emits that check. If a previously configured
+ruleset still requires it, remove that check context to avoid permanently pending PRs.
 
 No product build, unit-test, or static-analysis CI exists yet. Do not configure
 nonexistent checks. Add them only when real product tooling and workflows exist.
-Keep ai-harness-policy.yml as the only Harness-specific CI workflow.
+`scripts/validate-ai-harness.sh` remains a local structure check; the removed
+workflow's embedded-validator regression test was removed with its implementation.
 
-Before considering setup complete:
-1. Enable repository Actions if needed and run the workflow on a bootstrap PR.
-2. Select the emitted status check in the active default-branch ruleset.
-3. Verify the PR must pass the check and resolve conversations before merging.
-4. Verify force pushes and default-branch deletion are blocked.
-
-Do not make formatting review an AI responsibility when CI can decide it.
+Before considering setup complete, verify the actual active branch rules and
+retained check contexts. Verify conversation resolution, force-push protection and
+default-branch deletion protection where configured. This document itself does
+not establish that remote protection is enabled.
 
 ## Risk-level enforcement and limits
 
-Branch rules do not replace the R0-R4 process.
-
-The included workflow checks PR metadata:
-- exactly one Risk Class,
-- a linked Issue reference,
-- fresh Codex review recorded for R2-R4,
-- Claude review recorded for R3-R4,
-- human review recorded for R3-R4,
-- a Remaining risk statement for R4.
-
-R2 Claude triggers in 10-risk-levels.md must be evaluated by reviewers; the
-workflow does not infer them from code. Checkboxes are self-reported evidence:
-the workflow does not verify reviewer identity, freshness, Issue existence, or
-the maintainer's authorization comment. Human authorization is required even
-for R0-R2, where the workflow does not require the human-review checkbox.
-Re-check evidence against the latest diff after changes.
+Review guidance in `10-risk-levels.md`, Issue/PR templates and human merge
+authorization remain in place. Removing a metadata Action does not establish that
+tests or reviews occurred. Record actual review evidence and outstanding limitations
+truthfully; do not check a human-review box merely to make a status check pass.
 
 ## When a second human maintainer joins
 
