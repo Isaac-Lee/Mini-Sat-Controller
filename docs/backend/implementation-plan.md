@@ -89,7 +89,9 @@ receives simulator observations but still identifies unbound simulation evidence
 The spacecraft simulator has pinned scenarios, a durable command/effect ledger and reception
 faults/reconciliation. [Onboard payload materialization](simulation-payload.md) now writes
 command-bound synthetic raw bytes to S3 with exact size/hash and persistent retry. Ground Operations and its station simulator have durable allocation,
-booking and reconciliation. Complete battery/orbit/attitude/maneuver evolution,
+booking and reconciliation. [Payload downlink](simulation-downlink.md) now binds a payload
+to a pending command and reservation, verifies executed drain and actual bytes, and records
+a receiver receipt; the deployed fault/reconciliation flow passes. Complete battery/orbit/attitude/maneuver evolution,
 uplink/downlink payload delivery, acquisition, L0/quicklook and fulfillment remain unfinished.
 Monitoring and Anomaly retain source-bound telemetry, freshness, latched safety incidents and
 approved recovery. Their checks still need integration into final release orchestration.

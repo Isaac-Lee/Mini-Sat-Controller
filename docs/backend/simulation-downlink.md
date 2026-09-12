@@ -67,3 +67,30 @@ and absent-link UNKNOWN, verified receipt/event uniqueness, preserved UNKNOWN re
 retained receipts after cancellation, truncated bytes, cancellation during read, and outbox
 rollback with same-key retry. Fixtures seed owned ledger completion and mock S3 reads; actual
 HTTP roles, full command-to-station transfer and deployed reception remain to be verified.
+
+## Deployed command-to-station flow
+
+On 2026-09-12, Simulator image `msc-simulator:5c219bc1aa3e7394881d8954` rolled out
+successfully. `scripts/verify-simulation-downlink.py` passed nine check groups using new
+Mission Definition catalogs, a new simulation mission/correlation/resource profile, an actual
+Orekit contact prediction, and a Ground Operations booking confirmed by the station simulator.
+The verifier submitted IMAGE and DOWNLINK commands through the simulator API, advanced the
+scenario clock, waited for S3 payload materialization, and allocated the payload before the
+DOWNLINK started. It did not seed ledger completion directly into the database.
+
+Scenario `a71c7794-20f1-4735-880c-a5aa7f3c72cf` and booking
+`29197794-134b-4942-92df-a8b9612e4505` produced receiver plan
+`7b423967c04e41e0a3e67daa76822e7a0aa65f3ef1b50264cadbfd8ca6575e02`.
+Reception verified 1,000,000 bytes with SHA-256
+`e7e4b9ab40b7f34a8f0f0e5c913001ed3c5857284f2ebca54acd039b3081caab`.
+Unconfigured link, pending command, disconnection and acknowledgement loss remained UNKNOWN.
+Reconciliation succeeded with ledger/link revision 3; the receipt was read back, same-key
+UNKNOWN stayed UNKNOWN, and the completed receipt survived a later disconnection. Requester
+allocation and receive calls were rejected. All ten Deployments were ready afterward, with
+two Planning replicas. Evidence: `.local/simulation-downlink-verification.json` and
+`/private/tmp/msc-downlink-live.log`.
+
+This is a verified synthetic command-to-station path, not the final user-intent-to-product
+workflow. Control release/Space Link dispatch, acquisition-owned source import, products and
+request fulfillment remain unfinished. The fixture uses an explicitly advanced simulation
+clock and does not claim real-time RF transmission.
