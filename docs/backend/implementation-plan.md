@@ -115,3 +115,12 @@ stores verified bytes in `msc-acquisition`; see [source evidence](acquisition-si
 Real command-to-downlink-to-source flows passed with one and two Acquisition replicas.
 Gap accounting, L0, quicklook, product quality, projections and fulfillment remain open;
 this checkpoint does not close the complete acquisition/product workstream.
+
+
+### Automatic source completeness checkpoint (2026-09-12)
+
+Expected downlink plans now form an Acquisition-owned immutable manifest. Verified source
+arrival atomically updates its missing-source list and emits simulation completeness once.
+The deployed two-replica flow passed pre-reception INCOMPLETE to automatic COMPLETE;
+see [manifest evidence](acquisition-simulation-manifest.md). Packet-level gaps, independent
+Product processing, L0/quicklook and request fulfillment remain unfinished.

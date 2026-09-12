@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real owner APIs: IMAGE, S3 payload, Orekit-backed station booking, DOWNLINK reception."""
+import argparse
 import datetime
 import hashlib
 import importlib
@@ -23,6 +24,9 @@ def wait_read(port, path, predicate, timeout=60):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--with-manifest", action="store_true")
+    args = parser.parse_args()
     run = uuid.uuid4().hex
     craft, clock = 'sim-downlink-' + run, 'clock-' + run
     catalogs = []
@@ -95,6 +99,9 @@ def main():
     binding = {'scenarioId': scenario_id, 'loadId': load_id, 'commandId': command_ids[1], 'payloadId': payload_id, 'bookingId': booking['id']}
     call(8114, 'POST', '/internal/simulation/downlinks', binding, run, 'requester', 403)
     plan = call(8114, 'POST', '/internal/simulation/downlinks', binding, run)
+    manifest = None
+    if args.with_manifest:
+        manifest = importlib.import_module('verify-acquisition-manifest').before(scenario_id, plan['id'], run)
     receive = '/internal/simulation/downlinks/' + plan['id'] + '/receive'
     channel = {'channel': 'RECONCILIATION'}
     assert call(8114, 'POST', receive, channel, run + '-missing')['reason'] == 'LINK_NOT_CONFIGURED'
@@ -129,6 +136,8 @@ def main():
               'scope': 'Synthetic command-to-station flow; not production Control release, acquisition or fulfillment'}
     (api.ROOT / '.local/simulation-downlink-verification.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
+    if manifest is not None:
+        importlib.import_module('verify-acquisition-manifest').after(manifest, plan['id'], run)
 
 
 if __name__ == '__main__':

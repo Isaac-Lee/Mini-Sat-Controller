@@ -1,7 +1,7 @@
 # Simulation source completeness manifests
 
-This source checkpoint adds expected whole-source accounting to Acquisition. It is not
-yet deployed. The existing Simulator transfers a complete synthetic file per downlink;
+This source checkpoint adds expected whole-source accounting to Acquisition. It is
+deployed in local Kubernetes (evidence below). The existing Simulator transfers a complete synthetic file per downlink;
 there is no packet sequence or partial-file transfer model at this checkpoint.
 
 `POST /api/acquisition/simulation-manifests` accepts `scenarioId` and 1..64 distinct
@@ -42,3 +42,25 @@ and manifest when the completion event fails, and concurrent registration/import
 lost completion. Independent Product consumption remains to be connected. No manifest here asserts packet-level completeness, physical sensor
 qualification, a request/assignment binding, L0 generation, quicklook or fulfillment.
 Those remain required by the full backend goal.
+
+
+## Deployed verification — 2026-09-12
+
+Acquisition image `msc-acquisition:034a541bfa59fcec966bae25` rolled out with two
+replicas retained. `python3 scripts/verify-simulation-downlink.py --with-manifest`
+created a manifest before reception through the real API, then executed the synthetic
+IMAGE, Orekit-backed station booking and DOWNLINK flow. RabbitMQ source intake
+completed the manifest automatically, without calling refresh to cause the transition.
+
+Manifest `cb5636c8-67c4-4306-8ebd-10980954ae8c` changed from INCOMPLETE version 1
+to COMPLETE version 2 for receipt
+`4fdc53ab85dba452a24546b0c9b0a2e58834efc4d22de7e20261f5f87cd8f5f4`.
+Its expected/received totals were exactly 1,000,000 bytes. Expectations were preserved,
+received source metadata matched, repeated refresh retained version 2, and requester
+GET/refresh calls returned 403. The companion `verify-acquisition-source.py` also
+passed its real MinIO byte-count/hash checks for this receipt.
+
+Evidence: `.local/acquisition-manifest-verification.json`,
+`/private/tmp/msc-manifest-live.log`, `/private/tmp/msc-manifest-source-live.log`.
+This proves automatic whole-source accounting with two Acquisition replicas, not packet
+completeness, L0/product generation or full request fulfillment.
