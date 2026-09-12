@@ -184,3 +184,15 @@ verification with independent ray-plane arithmetic over 12 samples. See
 [camera evaluation evidence](camera-footprint-evaluation.md). Planning must next bind these
 sources to its run and establish exposure-duration/attitude evidence before approving coverage;
 actual combined feasibility, schedule commitment and command release remain incomplete.
+
+
+### Automatic Planning camera evidence checkpoint (2026-09-12)
+
+New Planning runs now queue exact-version camera evaluations. Workers retain the selected
+version across retries, fence claims across replicas, wait for compatible models and recover
+jobs missed during rolling upgrades. Candidate windows, AOI and owner hashes are checked
+before immutable assessment publication. Twenty-six related test executions and deployed
+automatic HTTP verification on two replicas passed; see [camera integration](planning-camera-evaluation.md).
+A real test also exposed and corrected geometry-budget starvation from incomplete old fixtures.
+Continuous exposure, full attitude sequence, combined feasibility and actual schedule commitment
+remain required; this checkpoint does not promote candidates to FEASIBLE.

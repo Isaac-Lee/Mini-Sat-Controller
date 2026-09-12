@@ -141,6 +141,16 @@ public final class PlanningIntake {
     return rows.getFirst();
   }
 
+  public Map<String, Object> cameraStatus(String runId) {
+    var rows =
+        db.queryForList(
+            "SELECT run_id,status,camera_model_version,attempts,last_issue FROM"
+                + " planning_camera_work WHERE run_id=?",
+            runId);
+    if (rows.isEmpty()) throw ApiException.missing("Automatic camera work not found");
+    return rows.getFirst();
+  }
+
   public void finish(Claim claim, PlanningInputs.Attempt attempt) {
     if (!claim.requestId().equals(attempt.requestId())
         || claim.revision() != attempt.revision()
@@ -195,6 +205,14 @@ public final class PlanningIntake {
             db.update(
                 "INSERT INTO"
                     + " planning_illumination_work(run_id,request_id,request_revision,input_attempt_id)"
+                    + " VALUES(?,?,?,?)",
+                run.id(),
+                run.requestId(),
+                run.requestRevision(),
+                run.inputAttemptId());
+            db.update(
+                "INSERT INTO"
+                    + " planning_camera_work(run_id,request_id,request_revision,input_attempt_id)"
                     + " VALUES(?,?,?,?)",
                 run.id(),
                 run.requestId(),

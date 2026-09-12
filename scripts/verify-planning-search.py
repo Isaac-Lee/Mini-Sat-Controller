@@ -20,7 +20,10 @@ def main():
                         help='Bounded wait for rotated fleet retries, including cache bucket renewal (default: 120)')
     parser.add_argument('--with-runs', action='store_true', help='Verify durable runs with complete simulation input categories')
     parser.add_argument('--with-illumination', action='store_true', help='Verify automatic illumination (requires --with-runs)')
+    parser.add_argument('--with-camera', action='store_true', help='Verify automatic sampled camera evaluation (requires --with-runs)')
     args = parser.parse_args()
+    if args.with_camera and not args.with_runs:
+        parser.error('--with-camera requires --with-runs')
     if args.with_illumination and not args.with_runs:
         parser.error('--with-illumination requires --with-runs')
     if not 1 <= args.timeout_seconds <= 900:
@@ -93,6 +96,9 @@ def main():
             'south': lat-.001, 'north': lat+.001, 'sourceReference': 'synthetic-propagated-subpoint'}
     if args.with_runs:
         importlib.import_module('verify-planning-runs').seed(call, craft, run, area)
+    camera_source = None
+    if args.with_camera:
+        camera_source = importlib.import_module('verify-planning-camera-worker').seed(call, craft, run)
     solar_source = None
     if args.with_illumination:
         solar_source = importlib.import_module('verify-planning-illumination-worker').seed(call, craft, run, area, epoch)
@@ -166,6 +172,9 @@ def main():
         if args.with_illumination:
             result['automaticIllumination'] = importlib.import_module('verify-planning-illumination-worker').verify(call, published_run, solar_source)
             result['passed'] += ['automatic queued illumination with pinned owner version', 'automatic work API roles', 'persisted FD evidence without manual evaluation']
+        if args.with_camera:
+            result['automaticCamera'] = importlib.import_module('verify-planning-camera-worker').verify(call, published_run, camera_source)
+            result['passed'] += ['automatic camera work without manual evaluation', 'candidate AOI and exact model version binding']
         (ROOT / '.local/planning-search-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))
     finally:

@@ -81,4 +81,10 @@ public class PlanningApi {
         .map(StateStore.State::body)
         .orElseGet(() -> new PlanningRuns.Index(id, List.of()));
   }
+
+  @GetMapping({"/api/planning/runs/{id}/camera-work", "/internal/planning/runs/{id}/camera-work"})
+  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
+  public Map<String, Object> cameraWork(@PathVariable String id) {
+    return intake.cameraStatus(id);
+  }
 }
