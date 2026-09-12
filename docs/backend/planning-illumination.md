@@ -24,8 +24,8 @@ artifacts and no partial local assessment is published.
 
 Neither conditional outcome changes overall candidate feasibility or commits a schedule.
 The remaining AOI sensor, attitude, resource, booking and live safety/conflict gates still apply.
-Automatic worker scheduling of this evaluation and the final combined gate/commit path remain
-to be connected; this endpoint provides an operator/service-invoked evidence stage.
+The endpoint also supports operator/service-invoked evaluation. Automatic scheduling is described
+below; the final combined feasibility gate and schedule commit path remain to be connected.
 
 Six focused tests across the options, run and illumination suites passed with no failures/errors/
 skips (`2026-09-12`, `/private/tmp/msc-planning-illumination.log`). The two new tests mock owner
@@ -62,3 +62,37 @@ is not physical qualification of the assumptions. Evidence is stored locally in
 `.local/planning-illumination-verification.json` and
 `/private/tmp/msc-planning-illumination-live.log`. The verifier only accepts the synthetic
 search spacecraft prefix and does not modify NORAD 63229 mission assumptions.
+
+## Automatic evidence work
+
+New runs published by PlanningIntake now enqueue `planning_illumination_work` in the same
+transaction as the input attempt, run, resource assessment and outbox. V4 adds the queue;
+existing historical runs are not backfilled. The scheduled worker claims one due item with
+PostgreSQL `FOR UPDATE SKIP LOCKED`, allowing independent Planning replicas to compete.
+It excludes work superseded by another input attempt or invalidated request revision.
+
+The worker selects the current Mission Definition assumptions once, validates owner identity
+and revision, and persists that exact revision before requesting evaluation. Recovered work
+uses the pinned revision, never a silently newer owner version. A 40-minute lease permits the
+bounded candidate evaluation; expired leases are reclaimable. Completion/status writes require
+the same live token, and API idempotency plus immutable assessment identity protect repeated
+computation after a crash. Network calls occur outside queue transactions. An already-running
+superseded worker may finish immutable historical evidence, but cannot change a replacement's
+queue state or commit a schedule.
+
+Missing assumptions or transient failures wait 30 seconds before retry. Invalid local evidence
+is rejected. No default assumptions are invented. `EVALUATED` means evidence was recorded,
+including a possible `NOT_ESTABLISHED` outcome, not that a candidate is feasible.
+`GET /api/planning/runs/{id}/illumination-work` and its `/internal` equivalent expose status,
+pinned revision, attempt count and an issue code to ADMIN/OPERATOR/SERVICE. Pre-feature runs
+without automatic work return 404; their manual evaluation endpoint remains available.
+
+The new worker is source-only until its subsequent deployment verification. PostgreSQL tests
+cover automatic completion, no duplicate processing, pinned-version recovery, expired-token
+fencing, superseded-input exclusion and transient-owner retry without fabricated assumptions.
+
+Focused validation passed 18 test executions across four classes with no failures/errors/skips
+on 2026-09-12 (`/private/tmp/msc-planning-illumination-worker.log`); this includes the two
+persistence lifecycle cases inherited by the worker test fixture. The intake test also checks
+that a successfully published run has a queued illumination item. These direct worker tests
+use actual PostgreSQL and mocked HTTP owners; they do not yet prove scheduled execution in K8s.

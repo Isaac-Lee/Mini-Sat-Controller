@@ -131,6 +131,16 @@ public final class PlanningIntake {
         });
   }
 
+  public Map<String, Object> illuminationStatus(String runId) {
+    var rows =
+        db.queryForList(
+            "SELECT run_id,status,assumptions_version,attempts,last_issue FROM"
+                + " planning_illumination_work WHERE run_id=?",
+            runId);
+    if (rows.isEmpty()) throw ApiException.missing("Automatic illumination work not found");
+    return rows.getFirst();
+  }
+
   public void finish(Claim claim, PlanningInputs.Attempt attempt) {
     if (!claim.requestId().equals(attempt.requestId())
         || claim.revision() != attempt.revision()
@@ -182,6 +192,14 @@ public final class PlanningIntake {
                     .findFirst()
                     .orElseThrow();
             resources.publish(store, schedules, attempt, asset, run);
+            db.update(
+                "INSERT INTO"
+                    + " planning_illumination_work(run_id,request_id,request_revision,input_attempt_id)"
+                    + " VALUES(?,?,?,?)",
+                run.id(),
+                run.requestId(),
+                run.requestRevision(),
+                run.inputAttemptId());
           }
           db.update(
               "UPDATE planning_work SET"

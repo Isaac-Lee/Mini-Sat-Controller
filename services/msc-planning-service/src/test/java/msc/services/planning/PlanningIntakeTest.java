@@ -34,7 +34,8 @@ class PlanningIntakeTest {
             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     Flyway.configure().dataSource(ds).load().migrate();
     db = new JdbcTemplate(ds);
-    db.execute("TRUNCATE state_head,state_history,outbox,inbox,planning_work");
+    db.execute(
+        "TRUNCATE state_head,state_history,outbox,inbox,planning_work,planning_illumination_work");
     db.update("UPDATE planning_inputs_epoch SET epoch=0");
     json = new Json(JsonMapper.builder().findAndAddModules().build());
     store =
@@ -116,6 +117,7 @@ class PlanningIntakeTest {
         store
             .require("planning-run", index.runIds().getFirst(), PlanningRuns.Published.class)
             .body();
+    assertEquals("QUEUED", intake.illuminationStatus(run.id()).get("status"));
     assertEquals(2, run.requestRevision());
     assertEquals(next.id(), run.inputAttemptId());
     var assessment =

@@ -51,6 +51,15 @@ public class PlanningApi {
     return store.require("planning-run", id, PlanningRuns.Published.class).body();
   }
 
+  @GetMapping({
+    "/api/planning/runs/{id}/illumination-work",
+    "/internal/planning/runs/{id}/illumination-work"
+  })
+  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
+  public Map<String, Object> illuminationWork(@PathVariable String id) {
+    return intake.illuminationStatus(id);
+  }
+
   @GetMapping({"/api/planning/runs/{id}/resources", "/internal/planning/runs/{id}/resources"})
   @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
   public PlanningResources.Assessment resources(@PathVariable String id) {
