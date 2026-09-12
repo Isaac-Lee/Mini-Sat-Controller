@@ -1,8 +1,9 @@
 # Simulator onboard execution
 
 Status: completion-effect arithmetic, persistent scenario initialization, load receipts and
-modeled command completion with clock advancement are implemented. Delivery/reconciliation
-and full physical state/product evolution remain in progress. This is
+modeled command completion with clock advancement, and explicit simulated delivery/reconciliation
+are implemented. Control/Space Link integration and full physical state/product evolution remain
+in progress. This is
 an incremental part of the full spacecraft and ground-station simulator requirements.
 
 `SimulatorOperationEffects` consumes a resolved catalog, matching operation-resource profile,
@@ -127,3 +128,40 @@ ledger, and no duplicate effect after another clock advance. Logs are
 local evidence files are `.local/simulation-command-verification.json` and
 `.local/simulation-command-restart-verification.json`. This establishes restart persistence
 for the completed modeled IMAGE case, not crash-at-every-instruction proof or ground delivery.
+
+## Delivery faults and reconciliation
+
+ADMIN `POST /api/simulation/scenarios/{id}/loads/{loadId}/link` configures versioned link
+state: `connected`, `acknowledgmentLost`, and `notBeforeTick`, with provenance and CAS.
+SERVICE `POST /internal/simulation/scenarios/{id}/loads/{loadId}/receive` makes an explicit
+`ACKNOWLEDGMENT` or `RECONCILIATION` attempt. Missing configuration, disconnection, delay,
+lost acknowledgment or still-pending execution returns `UNKNOWN` with an explicit reason.
+Reconciliation can recover a lost acknowledgment only when connected, no longer delayed,
+and the entire load is terminal. No lack of response is interpreted as command failure.
+
+Successful reception stores one immutable `SimulationExecutionContracts.Observation` and
+one `SpacecraftExecutionObserved` outbox event atomically. The payload identifies SIMULATION,
+scenario, spacecraft, load, exact ledger version/hash and per-command modeled outcomes/catalog
+hashes. Observation and reception times are explicitly simulation TAI times; the outer event
+timestamp records publication creation in the service clock. The outcome is `OBSERVED` modeled
+evidence, not a physical execution confirmation or fabricated sensor reading.
+
+Clock advancement still emits no execution observation by itself. Further reception attempts
+reuse the already received observation, even after a later disconnection. Each idempotency key
+identifies one attempt: replay of an old UNKNOWN attempt remains UNKNOWN; a new attempt uses a
+new key. Reception does not execute commands, change their effects, or erase payload content.
+
+The three new HTTP/PostgreSQL/RabbitMQ tests cover lost acknowledgment followed by reconciliation,
+disconnection/delay gating and database reconstruction, one observation/event across retries,
+and rollback of observation/history/idempotency when outbox insertion fails. The expanded focused
+run passed all 16 tests (`/private/tmp/msc-reception-api.log`). External Mission Definition is
+mocked in these tests. The existing broker routes carry the new event to Control/Monitoring
+queues, but an operational Control receiver and release gate are not implemented yet; this
+does not prove end-to-end ground operational confirmation or physical RF behavior.
+
+After deploying the updated Simulator image, `python3 scripts/verify-simulation-reception.py`
+passed seven delivery-fault checks against actual services (and first ran the six-check modeled
+command fixture). It verified disconnected/delayed/lost responses remain UNKNOWN, reconciliation
+returns the pinned modeled observation, repeated reception preserves it, an old attempt's replay
+does not change retrospectively, and reception never reapplies resource effects. Evidence:
+`.local/simulation-reception-verification.json`, log `/private/tmp/msc-reception-live.log`.

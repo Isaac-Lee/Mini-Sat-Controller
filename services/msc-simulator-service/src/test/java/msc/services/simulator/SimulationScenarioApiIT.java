@@ -331,11 +331,7 @@ class SimulationScenarioApiIT {
             "admin");
     assertEquals(21, later.getBody().at("/body/reservoirs/storedMegabytes").asDouble());
     verifyNoInteractions(owner);
-    assertEquals(
-        0,
-        db.queryForObject(
-            "SELECT count(*) FROM outbox WHERE event_type='SpacecraftExecutionObserved'",
-            Integer.class));
+    assertEquals(0, observations(request.id()));
   }
 
   @Test
@@ -442,5 +438,183 @@ class SimulationScenarioApiIT {
             .body()
             .reservoirs()
             .storedMegabytes());
+  }
+
+  private ResponseEntity<JsonNode> receptionPost(
+      UUID scenario, String load, String operation, Object body, String key, String actor) {
+    var headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", key);
+    String prefix = operation.equals("link") ? "/api" : "/internal";
+    return client
+        .withBasicAuth(actor, PASSWORD)
+        .postForEntity(
+            prefix + "/simulation/scenarios/" + scenario + "/loads/" + load + "/" + operation,
+            new HttpEntity<>(body, headers),
+            JsonNode.class);
+  }
+
+  private int observations(UUID scenario) {
+    return db.queryForObject(
+        "SELECT count(*) FROM outbox WHERE event_type='SpacecraftExecutionObserved' AND"
+            + " envelope->'payload'->>'scenarioId'=?",
+        Integer.class,
+        scenario.toString());
+  }
+
+  @Test
+  void lostAckStaysUnknownUntilReconciliationAndNeverRepeatsObservation() {
+    var scenario = fixture();
+    post(scenario, UUID.randomUUID().toString(), "admin");
+    var load = command(scenario, 20, 10);
+    commandPost(scenario.id(), "loads", load, "load", "service");
+    String id = load.load().id().value();
+    var policy = new SimulationReceptionApi.Configure(0, true, true, 0, "lost-ack-test");
+    assertEquals(
+        403,
+        receptionPost(scenario.id(), id, "link", policy, "denied", "service")
+            .getStatusCode()
+            .value());
+    assertEquals(
+        200,
+        receptionPost(scenario.id(), id, "link", policy, "link", "admin").getStatusCode().value());
+    commandPost(
+        scenario.id(), "advance", new SimulationCommandApi.Advance(1, 120), "complete", "admin");
+    var ack = new SimulationReceptionApi.Attempt(SimulationReceptionApi.Channel.ACKNOWLEDGMENT);
+    var unknown = receptionPost(scenario.id(), id, "receive", ack, "lost", "service");
+    assertEquals(200, unknown.getStatusCode().value());
+    assertEquals("UNKNOWN", unknown.getBody().path("belief").asText());
+    assertEquals("ACKNOWLEDGMENT_LOST", unknown.getBody().path("reason").asText());
+    assertEquals(0, observations(scenario.id()));
+    var reconcile =
+        new SimulationReceptionApi.Attempt(SimulationReceptionApi.Channel.RECONCILIATION);
+    var received = receptionPost(scenario.id(), id, "receive", reconcile, "reconcile", "service");
+    assertEquals("OBSERVED", received.getBody().path("belief").asText());
+    assertEquals("SIMULATION", received.getBody().at("/observation/environment").asText());
+    assertEquals(
+        "EFFECT_APPLIED", received.getBody().at("/observation/commands/0/outcome").asText());
+    assertEquals(1, observations(scenario.id()));
+    assertEquals(
+        received.getBody().get("observation"),
+        receptionPost(scenario.id(), id, "receive", reconcile, "reconcile-again", "service")
+            .getBody()
+            .get("observation"));
+    assertEquals(
+        unknown.getBody(),
+        receptionPost(scenario.id(), id, "receive", ack, "lost", "service").getBody());
+    assertEquals(1, observations(scenario.id()));
+    assertEquals(
+        21,
+        store
+            .require("simulation-scenario", scenario.id().toString(), Scenario.class)
+            .body()
+            .reservoirs()
+            .storedMegabytes());
+  }
+
+  @Test
+  void disconnectedAndDelayedLinkCannotPublishUntilAvailable() {
+    var scenario = fixture();
+    post(scenario, UUID.randomUUID().toString(), "admin");
+    var load = command(scenario, 20, 10);
+    commandPost(scenario.id(), "loads", load, "load", "service");
+    String id = load.load().id().value();
+    var attempt = new SimulationReceptionApi.Attempt(SimulationReceptionApi.Channel.RECONCILIATION);
+    assertEquals(
+        "LINK_NOT_CONFIGURED",
+        receptionPost(scenario.id(), id, "receive", attempt, "none", "service")
+            .getBody()
+            .path("reason")
+            .asText());
+    receptionPost(
+        scenario.id(),
+        id,
+        "link",
+        new SimulationReceptionApi.Configure(0, false, false, 200, "test"),
+        "off",
+        "admin");
+    commandPost(
+        scenario.id(), "advance", new SimulationCommandApi.Advance(1, 120), "complete", "admin");
+    assertEquals(
+        "DISCONNECTED",
+        receptionPost(scenario.id(), id, "receive", attempt, "disconnected", "service")
+            .getBody()
+            .path("reason")
+            .asText());
+    receptionPost(
+        scenario.id(),
+        id,
+        "link",
+        new SimulationReceptionApi.Configure(1, true, false, 200, "test"),
+        "on",
+        "admin");
+    assertEquals(
+        "DELAYED",
+        receptionPost(scenario.id(), id, "receive", attempt, "delay", "service")
+            .getBody()
+            .path("reason")
+            .asText());
+    commandPost(
+        scenario.id(), "advance", new SimulationCommandApi.Advance(2, 200), "time", "admin");
+    assertEquals(0, observations(scenario.id()));
+    var fresh = new SimulationReceptionApi(store, json);
+    var actor =
+        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            "service", "unused");
+    assertEquals(
+        "OBSERVED",
+        fresh.receive(scenario.id(), id, attempt, "arrived", actor).path("belief").asText());
+    assertEquals(1, observations(scenario.id()));
+  }
+
+  @Test
+  void observationAndOutboxRollbackTogether() {
+    var scenario = fixture();
+    post(scenario, UUID.randomUUID().toString(), "admin");
+    var load = command(scenario, 20, 10);
+    commandPost(scenario.id(), "loads", load, "load", "service");
+    String id = load.load().id().value();
+    receptionPost(
+        scenario.id(),
+        id,
+        "link",
+        new SimulationReceptionApi.Configure(0, true, false, 0, "test"),
+        "on",
+        "admin");
+    commandPost(
+        scenario.id(), "advance", new SimulationCommandApi.Advance(1, 120), "complete", "admin");
+    var failing = spy(store);
+    doThrow(new IllegalStateException("injected outbox write failure"))
+        .when(failing)
+        .event(
+            eq("SpacecraftExecutionObserved"),
+            anyString(),
+            anyLong(),
+            any(UUID.class),
+            isNull(),
+            any());
+    var api = new SimulationReceptionApi(failing, json);
+    var actor =
+        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            "service", "unused");
+    var attempt = new SimulationReceptionApi.Attempt(SimulationReceptionApi.Channel.ACKNOWLEDGMENT);
+    assertThrows(
+        IllegalStateException.class,
+        () -> api.receive(scenario.id(), id, attempt, "atomic", actor));
+    assertTrue(
+        store
+            .find(
+                "simulation-observation:" + scenario.id(),
+                id,
+                msc.contracts.SimulationExecutionContracts.Observation.class)
+            .isEmpty());
+    assertEquals(0, observations(scenario.id()));
+    assertEquals(
+        "OBSERVED",
+        receptionPost(scenario.id(), id, "receive", attempt, "atomic", "service")
+            .getBody()
+            .path("belief")
+            .asText());
+    assertEquals(1, observations(scenario.id()));
   }
 }
