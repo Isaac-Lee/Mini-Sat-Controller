@@ -1,5 +1,29 @@
 # Backend regression checkpoint — 2026-09-12
 
+## Automatic illumination checkpoint
+
+The full reactor passed at source commit
+`5d15ac181d20dc69d5722f11eafc63a922c0b40f`: **327 test executions across 73 classes**,
+with zero failures, errors or skipped tests. All 18 modules succeeded in 4 minutes
+12 seconds. This count includes inherited persistence cases executed in the automatic
+illumination worker test class; it is an execution count, not 327 unique scenarios.
+
+The command selected `*Test,*IT` with the same Java 21, local Maven repository, real
+Testcontainers and pinned Orekit archive described below. BE Java sources were unchanged
+during execution. Per-class results were counted once from
+`/private/tmp/msc-be-reactor-automatic-illumination.log`; machine evidence is
+`.local/be-reactor-automatic-illumination.json`.
+
+This supersedes the prior 308-test checkpoint for current source coverage and adds current
+authority diagnostics, conditional solar intervals, versioned solar assumptions, FD interval
+APIs, Planning assessment persistence and automatic illumination work. Separately, the
+[deployed automatic flow](planning-illumination.md) passed from a new synthetic request
+through scheduled evaluation with two Planning replicas. Neither result proves the remaining
+AOI/attitude feasibility, operational schedule commitment, final release, Space Link or
+payload/product delivery requirements.
+
+## Previous checkpoint
+
 The full current Maven reactor passed at source commit
 `9a3f68cc38fc81c4f72d9791c2ab514a406c76d6`: **308 tests across 67 classes**, with zero
 failures, errors or skipped tests. All 18 modules, including the parent and ten independent
