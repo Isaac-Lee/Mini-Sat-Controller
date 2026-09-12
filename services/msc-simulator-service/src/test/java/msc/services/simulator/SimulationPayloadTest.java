@@ -36,7 +36,7 @@ class SimulationPayloadTest {
             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     Flyway.configure().dataSource(ds).load().migrate();
     db = new JdbcTemplate(ds);
-    db.execute("TRUNCATE state_head,state_history,simulation_payload_work");
+    db.execute("TRUNCATE state_head,state_history,simulation_payload_work,idempotency,outbox");
     store =
         new StateStore(
             db,
@@ -132,7 +132,7 @@ class SimulationPayloadTest {
   @Test
   void invalidSizesDoNotUploadOrPretendToHavePayloads() {
     for (double size : new double[] {0, .0000001, 100}) {
-      db.execute("TRUNCATE state_head,state_history,simulation_payload_work");
+      db.execute("TRUNCATE state_head,state_history,simulation_payload_work,idempotency,outbox");
       intent(size);
       api.work();
       assertEquals(

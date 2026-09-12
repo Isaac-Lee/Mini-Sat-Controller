@@ -32,3 +32,38 @@ cases and one new real-PostgreSQL binding case. The binding fixture seeds owned 
 ledger, payload and booking records; it verifies replay, single immutable allocation,
 booking-volume exhaustion, late binding and cancelled booking rejection. It does not yet
 prove HTTP role enforcement, the full source-generation path or deployed transfer execution.
+
+## Receiver evidence
+
+With S3 enabled, SERVICE can call `POST /internal/simulation/downlinks/{id}/receive` with
+an ACKNOWLEDGMENT or RECONCILIATION channel and idempotency key. The receiver loads the stored
+plan and checks the same booking and scenario locks used by allocation, cancellation and
+scenario changes. It requires the unchanged confirmed booking, configured connected link,
+not-before tick, completed APPLIED command effect and sufficient actual modeled drain bytes.
+Command/template/profile/timing must still match the original allocation. Missing link,
+disconnection, delay, lost acknowledgement or unobserved/insufficient effects produce UNKNOWN,
+not successful reception. RECONCILIATION only bypasses the lost-acknowledgement condition.
+
+The receiver reads the entire bounded S3 object outside DB transactions and verifies exact
+byte count and SHA-256. Extra, missing or corrupt bytes cannot create a receipt. It then
+rechecks the booking, scenario, ledger and link under their locks; any revision/content change
+during the read yields UNKNOWN. The immutable receipt/history, `SimulatedPayloadReceived`
+outbox event and idempotency response commit atomically. An outbox failure rolls them back.
+A same-key retry retains the original result, including UNKNOWN; a fresh observation attempt
+uses a new key. Once a receipt exists it is retained through later cancellation/disconnection
+and returned without rereading the object or publishing another event.
+
+`GET /internal/simulation/downlinks/{id}/receipt` returns the receiver record to SERVICE.
+It retains plan hash, station, ledger/link revisions, received-at simulation time, size/hash
+and the immutable object reference. The station simulator has observed the bytes of that
+retained object; this does not create a second independent storage bucket or establish
+physical RF/contact behavior. Acquisition must still import the verified source into its own
+storage and produce mission-specific products. No request fulfillment is inferred here.
+
+Source validation passed 12 test executions across two classes on 2026-09-12, including eight
+inherited payload persistence executions, the allocation case and three new receiver cases
+(`/private/tmp/msc-simulation-downlink-reception.log`). Real PostgreSQL tests verify pending
+and absent-link UNKNOWN, verified receipt/event uniqueness, preserved UNKNOWN replay,
+retained receipts after cancellation, truncated bytes, cancellation during read, and outbox
+rollback with same-key retry. Fixtures seed owned ledger completion and mock S3 reads; actual
+HTTP roles, full command-to-station transfer and deployed reception remain to be verified.
