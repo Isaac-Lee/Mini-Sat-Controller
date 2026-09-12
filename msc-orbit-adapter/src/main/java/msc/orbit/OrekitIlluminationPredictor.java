@@ -99,6 +99,21 @@ public final class OrekitIlluminationPredictor {
   public record PointIllumination(
       List<TimeWindow> illuminatedWindows, ToleranceSettings tolerances) {}
 
+  /** Interval support is conditional on the supplied full spatial-bound rate/error assumptions. */
+  public ConditionalSolarInterval.Result rectangularInterval(
+      TimeWindow horizon, RectangularSolarElevation.Rectangle area,
+      ConditionalSolarInterval.Assumptions assumptions) {
+    java.util.Objects.requireNonNull(area);
+    var start = time.date(horizon.start());
+    var end = time.date(horizon.end());
+    checkHorizon(start, end);
+    var earth = references.earth();
+    var sun = new AnalyticalSolarPositionProvider(references.context());
+    return ConditionalSolarInterval.evaluate(end.durationFrom(start), assumptions,
+        offset -> RectangularSolarElevation.at(area, earth, sun, start.shiftedBy(offset))
+            .lowerElevationRadians());
+  }
+
   /** Numerical event search of the continuous spatial bound, not a temporal certificate. */
   public PointIllumination rectangularIllumination(
       TimeWindow horizon, RectangularSolarElevation.Rectangle area,

@@ -16,6 +16,25 @@ class RectangularIlluminationIT {
   }
 
   @Test
+  void intervalAdapterRetainsExplicitAssumptionsAndCoversActualSolarSamples() throws Exception {
+    var refs = references();
+    var start = refs.fromUtc("2026-09-01T12:00:00");
+    var area = new RectangularSolarElevation.Rectangle(-10, 10, -10, 10, 0);
+    // Test-only assumption, not a measured or mission-qualified solar rate/error bound.
+    var assumptions = new ConditionalSolarInterval.Assumptions(.001, .0001, 5, "synthetic integration assumption");
+    var result = new OrekitIlluminationPredictor(refs).rectangularInterval(
+        new TimeWindow(start, start.plus(new MissionDuration(11_000_000_000L))), area, assumptions);
+    assertEquals(assumptions, result.assumptions());
+    assertEquals(3, result.cells().size());
+    var sun = new AnalyticalSolarPositionProvider(refs.context());
+    var date = new KeplerianOrbitAdapter().date(start);
+    for (int i = 0; i <= 110; i++) {
+      double actual = RectangularSolarElevation.at(area, refs.earth(), sun, date.shiftedBy(i / 10.0)).lowerElevationRadians();
+      assertTrue(result.lowerElevationRadians() <= actual);
+    }
+  }
+
+  @Test
   void fullRectangleWindowsAgreeWithIndependentTopocentricGridAcrossDayAndNight() throws Exception {
     var refs = references();
     var start = refs.fromUtc("2026-09-01T00:00:00");
