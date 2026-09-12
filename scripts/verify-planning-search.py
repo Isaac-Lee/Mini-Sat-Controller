@@ -21,7 +21,10 @@ def main():
     parser.add_argument('--with-runs', action='store_true', help='Verify durable runs with complete simulation input categories')
     parser.add_argument('--with-illumination', action='store_true', help='Verify automatic illumination (requires --with-runs)')
     parser.add_argument('--with-camera', action='store_true', help='Verify automatic sampled camera evaluation (requires --with-runs)')
+    parser.add_argument('--with-simulation-commit', action='store_true', help='Verify V1 schedule commitment and Control preparation (requires --with-camera)')
     args = parser.parse_args()
+    if args.with_simulation_commit and not args.with_camera:
+        parser.error('--with-simulation-commit requires --with-camera')
     if args.with_camera and not args.with_runs:
         parser.error('--with-camera requires --with-runs')
     if args.with_illumination and not args.with_runs:
@@ -175,10 +178,14 @@ def main():
         if args.with_camera:
             result['automaticCamera'] = importlib.import_module('verify-planning-camera-worker').verify(call, published_run, camera_source)
             result['passed'] += ['automatic camera work without manual evaluation', 'candidate AOI and exact model version binding']
+        if args.with_simulation_commit:
+            result['simulationSchedule'] = importlib.import_module('verify-simulation-schedule').verify(call, published_run, run)
+            result['passed'] += ['V1 selected schedule persists with request binding', 'Tasking scheduled progress', 'Control prepares committed schedule']
         (ROOT / '.local/planning-search-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))
     finally:
-        call(8101, 'POST', '/api/requests/' + request_id + '/cancel', {'expectedVersion': 1}, run+'cancel', 'requester')
+        current = call(8101, 'GET', '/api/requests/' + request_id, user='requester')
+        call(8101, 'POST', '/api/requests/' + request_id + '/cancel', {'expectedVersion': current['version']}, run+'cancel', 'requester')
         if published_run:
             assert call(8102, 'GET', '/internal/planning/runs/'+published_run['id']) == published_run
         if published_resources:

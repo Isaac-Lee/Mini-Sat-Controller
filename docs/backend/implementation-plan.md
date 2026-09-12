@@ -206,3 +206,13 @@ entries that treated continuous exposure/precision attitude work as immediate bl
 Prioritize one connected request-to-synthetic-product workflow using the existing FD algorithms,
 with guided review and visible approximation limits. Finish schedule/Control/request-product
 integration, verify the functional path, then stop expanding numerical or hardening scope.
+
+### V1 selected schedule integration (2026-09-12)
+
+Added an explicit simulation selection API that commits an owned candidate with sampled camera
+and current resource evidence, preserving the original unevaluated run. Request revision,
+supersession, schedule conflicts, versioning and atomic outbox writes remain enforced; a committed
+selection clears any in-flight Planning lease. Tasking receives the assignment progress event.
+The guided search verifier now optionally prepares a real Control load from this saved schedule.
+See [V1 schedule API](simulation-schedule-v1.md). Downstream release, simulator execution and
+product-to-request fulfillment remain the next integration slice, not completed by preparation.
