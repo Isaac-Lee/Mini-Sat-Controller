@@ -2,6 +2,24 @@
 
 Current checkpoint (2026-09-12): nine independent services including Planning intake.
 
+## 2026-09-12 complete committed-source reactor
+
+An immutable `git archive` of pushed commit `eefefb3a62bde20fdf83fc352335e03f26d646f0`
+was tested in `/private/tmp/msc-pushed-reactor-b6k7k_3q`, independently of the working
+tree where the simulator worker continued editing. The complete 17-module reactor
+finished with **BUILD SUCCESS: 270 tests across 58 classes, zero failures, errors or
+skips**, in 2 minutes 57 seconds. The command selected `*Test,*IT` explicitly,
+used JDK 21 and the pinned Maven repository, and supplied the existing pinned Orekit
+archive/digest. PostgreSQL and RabbitMQ integration tests used actual Testcontainers.
+Log: `/private/tmp/msc-pushed-reactor.log`; machine-readable local checkpoint:
+`.local/pushed-reactor-checkpoint.json`.
+
+This establishes a clean full reactor for that committed implementation baseline,
+superseding the earlier failure-plus-scoped-recheck evidence below. It does not
+include the subsequent onboard execution worker's source or prove unfinished
+operational acceptance criteria. No production image was replaced by this isolated
+test run. Later documentation-only commits do not change the tested Java source.
+
 ## 2026-09-12 GP eclipse and simulation time correlation
 
 The scoped Mission Definition / Flight Dynamics Maven reactor completed successfully:

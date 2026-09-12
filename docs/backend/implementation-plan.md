@@ -106,17 +106,18 @@ all others one) with zero restarts after sequential startup. This recovery follo
 an observed shared-resource startup/restart failure; it is not production capacity
 evidence. The latest Planning cache-budget/model-event reactor passed 75 tests.
 
-Latest incremental evidence: automatic [Planning resource assessments](planning-resources.md)
-are deployed and owner-API verified, including later committed activities and independent
-reservoir arithmetic. K8s-only local runtime has two Planning replicas serving identical
-historical assessments. Full candidate feasibility and downstream operational flow remain
-incomplete. The integrated reactor ran 233 tests across 53 classes with one failing test-only
-JSON numeric-node comparison; every other test passed. After correcting the Planning assertion
-to verify canonical content and restored input validation, the scoped Planning reactor passed
-33 tests across nine classes. Mission catalog binding/resource owner HTTP tests, numerical
-illumination tests and legacy catalog replay persistence tests passed. Logs:
-`/private/tmp/msc-operation-integration-full-retry4.log` and
-`/private/tmp/msc-operation-planning-final.log`. These are separate runs, not one clean full
-reactor result. Updated images are being rolled out; live operation-aware Planning verification
-is still pending. Public-GP eclipse support is a separate next source change and is not included
-in this image set.
+Latest integrated evidence: commit `eefefb3` was exported to an isolated directory and the
+complete Maven reactor passed on 2026-09-12: **270 tests across 58 classes, zero failures,
+errors or skips**, with explicit `*Test,*IT` selection, Docker-backed persistence/broker tests
+and the pinned Orekit reference archive. Log: `/private/tmp/msc-pushed-reactor.log`.
+This supersedes the earlier 233-test run with a test-only numeric-node assertion failure and
+its scoped rechecks. Subsequent changes before this checkpoint affect documentation only.
+
+Operation-aware Planning verification and both-replica readback have passed. Mission Definition
+and Flight Dynamics were subsequently independently deployed with GP eclipse and simulation
+clock-correlation support; deployed API verifiers passed 12 illumination/GP checks and six
+correlation ownership/history checks. See [runtime evidence](runtime-verification.md).
+These results cover the implemented baseline, not the remaining full operational requirements.
+The onboard execution ledger is being implemented separately and is not part of this reactor
+snapshot; physical simulator evolution, full AOI/attitude feasibility, atomic operational
+commitment, Control/Space Link and product delivery remain unfinished.
