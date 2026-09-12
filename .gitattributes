@@ -1,0 +1,3 @@
+# Preserve the upstream Windows wrapper and source-hashed provider fixture bytes.
+mvnw.cmd -text whitespace=cr-at-eol
+services/msc-reference-data-service/src/test/resources/spaceeye-t1-gp.json -text whitespace=cr-at-eol
