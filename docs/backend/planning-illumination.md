@@ -42,3 +42,23 @@ assessment/history/idempotency when outbox insertion fails, followed by successf
 JSON readback is compared using canonical fingerprints because Jackson integer node widths
 can differ after PostgreSQL JSONB round trips. This adds DB transaction evidence; HTTP role
 checks and deployed cross-service evaluation remain separate verification requirements.
+
+## Deployed service verification
+
+On 2026-09-12, Planning image `msc-planning:0aa1906ed837b11212917af7` rolled out
+successfully with both replicas ready. All ten service Deployments remained ready.
+`scripts/verify-planning-illumination.py` passed eight check groups against the existing
+synthetic search run `557f3d6f-b68b-36a4-b7b8-f02ed6789bc0`.
+It used the stored candidate window, AOI, model and reference digest, published explicitly
+test-only assumptions for that synthetic spacecraft, and exercised actual Planning → Mission
+Definition → Flight Dynamics HTTP calls. Owner interval records and Planning assessments
+were read back, both same-key and different-key retries returned the immutable assessment,
+changed-request reuse returned 409, and requester compute/read returned 403. The original
+run remained byte-equivalent as parsed JSON, including unevaluated overall feasibility.
+
+The candidate returned `NOT_ESTABLISHED`: these declared bounds do not establish the required
+illumination, rather than proving darkness or observation infeasibility. This verification
+is not physical qualification of the assumptions. Evidence is stored locally in
+`.local/planning-illumination-verification.json` and
+`/private/tmp/msc-planning-illumination-live.log`. The verifier only accepts the synthetic
+search spacecraft prefix and does not modify NORAD 63229 mission assumptions.
