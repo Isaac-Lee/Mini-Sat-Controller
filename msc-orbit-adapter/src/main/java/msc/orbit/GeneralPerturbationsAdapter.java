@@ -49,6 +49,36 @@ public final class GeneralPerturbationsAdapter {
         references.context().getTimeScales().getUTC());
   }
 
+  public record TleLines(String line1, String line2) {}
+
+  /** Traditional two-line export rounds GP precision; it must never replace the source GP. */
+  public TleLines exportTle(MeanElements elements) {
+    int epochYear = java.time.LocalDateTime.parse(elements.epochUtc().replace("Z", "")).getYear();
+    if (elements.noradId() > 99999
+        || epochYear < 1957
+        || epochYear > 2056
+        || elements.elementSetNumber() > 9999
+        || elements.revolutionNumber() > 99999)
+      throw new IllegalArgumentException(
+          "Elements cannot be represented in traditional five-digit TLE fields");
+    if (!elements.internationalDesignator().isEmpty()) {
+      int launchYear = Integer.parseInt(elements.internationalDesignator().substring(0, 4));
+      if (launchYear < 1957 || launchYear > 2056)
+        throw new IllegalArgumentException(
+            "Launch year cannot be represented unambiguously in traditional TLE");
+    }
+    var value = tle(elements);
+    String first = value.getLine1(), second = value.getLine2();
+    if (first.length() != 69 || second.length() != 69 || !TLE.isFormatOK(first, second))
+      throw new IllegalArgumentException("Elements exceed traditional TLE format precision/range");
+    var parsed = new TLE(first, second, references.context().getTimeScales().getUTC());
+    if (Math.abs(parsed.getDate().durationFrom(value.getDate())) > .001)
+      throw new IllegalArgumentException("TLE epoch rounding changed its century or range");
+    if (parsed.getSatelliteNumber() != elements.noradId())
+      throw new IllegalArgumentException("TLE NORAD identity changed");
+    return new TleLines(first, second);
+  }
+
   TLEPropagator propagator(MeanElements e) {
     return TLEPropagator.selectExtrapolator(tle(e), references.context().getFrames().getTEME());
   }
@@ -91,13 +121,14 @@ public final class GeneralPerturbationsAdapter {
   }
 
   /**
-   * Finite-Sun, penumbra-inclusive eclipse/sunlit windows for a real SGP4/SDP4 propagation of
-   * these GP mean elements, shaped exactly like {@link #access}: delegates to {@link
+   * Finite-Sun, penumbra-inclusive eclipse/sunlit windows for a real SGP4/SDP4 propagation of these
+   * GP mean elements, shaped exactly like {@link #access}: delegates to {@link
    * OrekitIlluminationPredictor}'s propagator-agnostic overload using the real {@link
-   * #propagator(MeanElements)} (TEME) directly. Never converts these mean elements into a
-   * two-body {@link msc.domain.flightdynamics.Trajectory.InitialState} -- see the class javadoc.
+   * #propagator(MeanElements)} (TEME) directly. Never converts these mean elements into a two-body
+   * {@link msc.domain.flightdynamics.Trajectory.InitialState} -- see the class javadoc.
    */
   public OrekitIlluminationPredictor.SpacecraftEclipse eclipse(MeanElements e, TimeWindow horizon) {
-    return new OrekitIlluminationPredictor(references).spacecraftEclipse(epoch(e), propagator(e), horizon);
+    return new OrekitIlluminationPredictor(references)
+        .spacecraftEclipse(epoch(e), propagator(e), horizon);
   }
 }

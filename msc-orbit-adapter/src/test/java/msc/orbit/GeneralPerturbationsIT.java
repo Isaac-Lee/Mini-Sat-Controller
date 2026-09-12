@@ -35,6 +35,21 @@ class GeneralPerturbationsIT {
   }
 
   @Test
+  void exportsTraditionalTleWithChecksumsAndRejectsUnrepresentableIds() throws Exception {
+    var frames = frames();
+    var adapter = new GeneralPerturbationsAdapter(frames);
+    var value = adapter.exportTle(spaceeye(63229));
+    assertEquals(69, value.line1().length());
+    assertEquals(69, value.line2().length());
+    assertTrue(TLE.isFormatOK(value.line1(), value.line2()));
+    var parsed = new TLE(value.line1(), value.line2(), frames.context().getTimeScales().getUTC());
+    assertEquals(63229, parsed.getSatelliteNumber());
+    assertEquals(spaceeye(63229).eccentricity(), parsed.getE(), 5e-8);
+    assertThrows(IllegalArgumentException.class, () -> adapter.exportTle(spaceeye(100000)));
+    assertThrows(IllegalArgumentException.class, () -> adapter.exportTle(spaceeye(999999999)));
+  }
+
+  @Test
   void gpMatchesTleParsingAndTransformedEarthTrack() throws Exception {
     var f = frames();
     var adapter = new GeneralPerturbationsAdapter(f);

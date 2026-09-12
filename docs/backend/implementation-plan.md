@@ -98,7 +98,8 @@ approved recovery. Their checks still need integration into final release orches
 
 [Public GP collection](public-orbits.md) tracks SPACEEYE-T1 (NORAD 63229) and uses preserved
 CelesTrak mean elements for SGP4/SDP4 prediction. This does not supply hardware specifications;
-two-line TLE import/export is not yet implemented. Explicit simulation contracts remain
+[Derived two-line TLE export](public-tle-export.md) is now implemented in source; deployment,
+provider-original TLE collection and caller TLE import remain pending. Explicit simulation contracts remain
 separate from real mission qualification.
 
 The [regression checkpoint](reactor-checkpoint-2026-09-12.md) records full-reactor evidence and
