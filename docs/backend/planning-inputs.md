@@ -75,7 +75,8 @@ IDs/results under `.local/planning-input-verification.json`.
 Default tests exercise lease/revision/invalidation races against PostgreSQL and
 mission binding, idempotency, CAS, version history and role enforcement over real
 HTTP. Planning caps one collection at 32 assets and checks a 20-second budget
-between assets; individual owner calls can overrun that budget. Leases last 120
+between assets, followed by a separate 20-second numerical-search phase; individual owner
+calls can overrun either budget. Leases last 120
 seconds; work retries after 30 seconds or an input wakeup (minimum five seconds).
 These are development bounds, not a fleet throughput or latency qualification.
 

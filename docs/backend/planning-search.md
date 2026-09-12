@@ -38,7 +38,7 @@ it as a valid local planning attempt. No network call runs inside this transacti
 
 Input collection rotates the starting spacecraft by the durable attempt number.
 Each attempt captures at most 32 missions and makes at most two fresh geometry
-HTTP attempts within the collection time budget. Durable cache hits do not consume
+HTTP attempts in a separate 20-second numerical-search phase after bounded input collection. Durable cache hits do not consume
 this budget; failed HTTP attempts do consume it, so upstream failures cannot cause
 unbounded retries within one collection attempt. The Mission Definition list still has
 its existing 500-record cap and lacks pagination; support beyond that cap is not
@@ -91,3 +91,18 @@ changes. A real broker-delivery regression covers this routing.
 The next service stage now records [source-pinned domain runs and candidates](planning-runs.md)
 when every required input category is present. Missing inputs remain in the attempt;
 candidates remain unevaluated until the remaining numerical/operational gates are implemented.
+
+
+## Readiness ordering (2026-09-12)
+
+A deployed automatic-camera verification exposed a starvation case: several old synthetic
+spacecraft repeatedly consumed the two numerical calls before the new, fully configured
+spacecraft was evaluated. The first run timed out without creating a candidate; it was not
+a successful camera verification.
+
+Planning now collects bounded source inputs before allocating numerical calls. Assets with all
+required source categories, catalog, simulation model and operation bindings are considered
+first; fewer missing conditions break readiness ties. Stable sorting preserves the existing
+rotated fleet order for equal readiness. No evidence is dropped and missing inputs still remain
+missing. Numerical search has its own 20-second phase budget and retains its two-call cap.
+This improves selection readiness; it does not claim an unbounded-fleet throughput guarantee.

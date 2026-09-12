@@ -101,4 +101,48 @@ class PlanningInputsTest {
     assertEquals(json.tree(live), attempt.request().orElseThrow().value());
     assertTrue(attempt.assets().isEmpty());
   }
+
+  @Test
+  void readySpacecraftGetsGeometryBudgetBeforeIncompleteFleetAndTiesRetainRotation() {
+    var base = new PlanningRunsTest().asset();
+    var evidence = base.catalog().orElseThrow();
+    var operations = Optional.of(new PlanningOperations.Captured(evidence, evidence, Map.of()));
+    var ready =
+        new PlanningInputs.Asset(
+            "ready",
+            base.inputs(),
+            List.of("SAFETY_CLEARANCE"),
+            base.catalog(),
+            Optional.empty(),
+            base.simulationModel(),
+            List.of(),
+            operations);
+    var nextReady =
+        new PlanningInputs.Asset(
+            "next-ready",
+            base.inputs(),
+            List.of("SAFETY_CLEARANCE"),
+            base.catalog(),
+            Optional.empty(),
+            base.simulationModel(),
+            List.of(),
+            operations);
+    var missing = new EnumMap<>(base.inputs());
+    missing.remove(msc.domain.planning.PlanningDataSnapshot.Input.PROPELLANT);
+    var old =
+        new PlanningInputs.Asset(
+            "old",
+            missing,
+            List.of("PROPELLANT", "FRESH_SPACECRAFT_STATE"),
+            base.catalog(),
+            Optional.empty(),
+            base.simulationModel(),
+            List.of(),
+            operations);
+    var ordered = PlanningInputs.prioritizeGeometry(List.of(old, nextReady, ready));
+    assertEquals(List.of(nextReady, ready, old), ordered);
+    assertEquals(List.of(nextReady, ready), ordered.subList(0, 2));
+    assertTrue(old.pointGeometry().isEmpty());
+    assertEquals(List.of("PROPELLANT", "FRESH_SPACECRAFT_STATE"), old.missing());
+  }
 }

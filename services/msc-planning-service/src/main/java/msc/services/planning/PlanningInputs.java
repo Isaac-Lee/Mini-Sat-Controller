@@ -223,7 +223,6 @@ public class PlanningInputs {
     }
     if (missions.size() > 32) issues.add("FLEET_EXCEEDS_SINGLE_ATTEMPT_LIMIT");
     long budget = System.nanoTime() + 20_000_000_000L;
-    var geometryBudget = new PlanningGeometry.Budget(2);
     var orderedMissions = new ArrayList<JsonNode>();
     missions.forEach(orderedMissions::add);
     orderedMissions.sort(Comparator.comparing(e -> e.path("body").path("spacecraftId").asText()));
@@ -390,12 +389,37 @@ public class PlanningInputs {
       } catch (RuntimeException unavailable) {
         missing.add("SAFETY_POLICY");
       }
+      assets.add(
+          new Asset(
+              craft,
+              inputs,
+              missing,
+              Optional.ofNullable(catalog),
+              Optional.empty(),
+              Optional.ofNullable(simulationModel),
+              List.of(),
+              Optional.ofNullable(operations)));
+    }
+    // Allocate scarce numerical calls only after input readiness is known. Stable ordering keeps
+    // the rotated fleet order within each readiness group rather than repeatedly spending both
+    // calls on obsolete/incomplete spacecraft near the front of the fleet.
+    var pending = prioritizeGeometry(assets);
+    assets.clear();
+    long geometryDeadline = System.nanoTime() + 20_000_000_000L;
+    var geometryBudget = new PlanningGeometry.Budget(2);
+    for (var asset : pending) {
+      String craft = asset.spacecraftId();
+      var inputs = asset.inputs();
+      var missing = new ArrayList<>(asset.missing());
+      var catalog = asset.catalog().orElse(null);
+      var simulationModel = asset.simulationModel().orElse(null);
+      var operations = asset.operations().orElse(null);
       Evidence geometry = null;
       if (catalog != null
           && inputs.containsKey(Input.ORBIT)
           && inputs.containsKey(Input.AGILITY)
           && references != null) {
-        if (System.nanoTime() > budget) {
+        if (System.nanoTime() > geometryDeadline) {
           missing.add("POINT_GEOMETRY_BUDGET_REACHED");
         } else {
           try {
@@ -455,5 +479,19 @@ public class PlanningInputs {
         request,
         List.copyOf(assets),
         List.copyOf(issues));
+  }
+
+  static List<Asset> prioritizeGeometry(List<Asset> assets) {
+    var ordered = new ArrayList<>(assets);
+    ordered.sort(
+        Comparator.<Asset, Boolean>comparing(
+                a ->
+                    a.inputs().keySet().containsAll(EnumSet.allOf(Input.class))
+                        && a.catalog().isPresent()
+                        && a.simulationModel().isPresent()
+                        && a.operations().isPresent())
+            .reversed()
+            .thenComparingInt(a -> a.missing().size()));
+    return List.copyOf(ordered);
   }
 }
