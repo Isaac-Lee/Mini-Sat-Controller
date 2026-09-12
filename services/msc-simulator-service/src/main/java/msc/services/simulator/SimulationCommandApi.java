@@ -282,6 +282,10 @@ public class SimulationCommandApi {
                     e.completionTick(),
                     status,
                     effect));
+            if (status == Status.EFFECT_APPLIED
+                && e.profile().operation()
+                    == msc.contracts.OperationResourceContracts.Operation.IMAGE)
+              SimulationPayload.record(store, json, id, e);
             reservoirs = effect.after();
           }
           for (var load : all)

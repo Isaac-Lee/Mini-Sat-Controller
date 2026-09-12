@@ -322,6 +322,12 @@ class SimulationScenarioApiIT {
         SimulationCommandApi.Status.EFFECT_APPLIED, ledger.body().entries().getFirst().status());
     assertEquals(20, ledger.body().entries().getFirst().effect().before().storedMegabytes());
     assertEquals(21, ledger.body().entries().getFirst().effect().after().storedMegabytes());
+    String payloadId =
+        json.fingerprint(
+            java.util.List.of(
+                request.id().toString(),
+                ledger.body().entries().getFirst().command().id().value()));
+    assertEquals(1, store.history(SimulationPayload.KIND, payloadId).size());
     var later =
         commandPost(
             request.id(),
@@ -421,6 +427,12 @@ class SimulationScenarioApiIT {
     assertEquals(
         1, store.history("simulation-load:" + scenario.id(), load.load().id().value()).size());
     assertEquals(1, store.history("simulation-scenario", scenario.id().toString()).size());
+    String payloadId =
+        json.fingerprint(
+            java.util.List.of(
+                scenario.id().toString(), load.load().commands().getFirst().id().value()));
+    assertTrue(
+        store.find(SimulationPayload.KIND, payloadId, SimulationPayload.Intent.class).isEmpty());
     assertEquals(
         200,
         commandPost(
