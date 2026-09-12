@@ -37,8 +37,10 @@ must account for those remaining errors and gaps, and retain unresolved interval
 Four tests passed through isolated javac and direct JUnit assertion invocation: an interior
 minimum missed by five points, 40,344 grid comparisons against Orekit geodetic normals and
 topocentric directions, longitude-boundary/polar-Sun cases, and invalid geometry. The provider
-test also asserts the requested frame is the ellipsoid frame. Reactor verification is pending;
-no API or candidate feasibility gate uses this helper yet.
+test also asserts the requested frame is the ellipsoid frame. These tests subsequently passed
+in the 2026-09-12 Mission Definition / Flight Dynamics Maven reactor (207 total tests,
+zero failures, errors or skips; `/private/tmp/msc-gp-correlation-reactor.log`).
+No API or candidate feasibility gate uses this helper yet.
 
 The result retains its exact evaluation epoch to prevent an instantaneous value being mistaken
 for interval coverage. Latitude is explicitly geodetic, longitude east-positive and altitude
