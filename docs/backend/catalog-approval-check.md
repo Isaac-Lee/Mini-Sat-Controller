@@ -25,7 +25,11 @@ until a trusted policy-approval producer exists; human approval does not stand i
 Tests exercise mixed policy/two-human requirements, forbidden/unknown authority and the existing
 release predicates. The Control DB integration test now checks persisted grants, revocation of
 both actors, renewal and expiry through this API's controller with a deterministic clock.
-Deployment of the new check endpoint and positive HTTP verification remain pending.
+Control was independently updated in the local kind cluster. The extended
+`scripts/verify-command-approvals.py` passed requester denial and operator/service missing-load
+checks for the new endpoint. The full deployed schedule/approval/preparation/evidence regression
+chain also passed, and all ten Deployments remained ready with Planning at two replicas.
+Positive deployed checking against production-prepared commands remains unproven.
 
 The focused run passed 22 tests across four classes with no failures/errors/skips
 (`2026-09-12`, local log `/private/tmp/msc-catalog-approval-check.log`).
