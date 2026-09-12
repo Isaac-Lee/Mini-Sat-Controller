@@ -143,3 +143,13 @@ preview after whole-source integrity verification. Deployed API checks compared 
 preview pixels with the source and verified roles/idempotency; see [content evidence](simulation-product-content.md).
 This diagnostic synthetic preview does not complete a mission-qualified imagery quicklook,
 coverage/cloud assessment or request fulfillment.
+
+
+### Required target-pointing checkpoint (2026-09-12)
+
+Flight Dynamics now computes and persists owner-bound required line-of-sight profiles for
+Cartesian and public GP inputs. Thirteen contract/numerical tests and ten PostgreSQL API
+tests passed; the deployed NORAD 63229 HTTP flow passed independent WGS84 geometry,
+source preservation, role and idempotency checks. See [API evidence](required-target-pointing.md).
+This supplies geometry for the next explicit simulation camera/footprint model; AOI coverage,
+attitude feasibility, schedule commitment and release remain required and unfinished.
