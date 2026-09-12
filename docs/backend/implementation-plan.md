@@ -163,3 +163,13 @@ Ten real HTTP/DB tests and the deployed version/role/replay verification passed;
 [camera model evidence](simulation-camera-model.md). The independent numerical projection
 helper also passed six tests. Owner-bound FD evaluation and Planning coverage integration
 remain unfinished; publishing the camera does not promote a feasibility gate.
+
+
+### Current-schedule resource reassessment checkpoint (2026-09-12)
+
+Planning can re-evaluate an immutable run's resource inputs under the spacecraft lock using
+current schedule heads and current-time freshness. Twenty-two resource/intake/reassessment
+tests and deployed HTTP checks passed with two Planning replicas ready; see
+[reassessment evidence](planning-resource-reassessment.md). Results are immutable evidence,
+not reservations or commit permits. Production commitment must reuse the calculation
+inside its own publication transaction and still satisfy the remaining feasibility gates.

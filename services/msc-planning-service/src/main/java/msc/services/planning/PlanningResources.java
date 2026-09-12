@@ -60,6 +60,18 @@ final class PlanningResources {
       Attempt attempt,
       Asset asset,
       PlanningRuns.Published run) {
+    var result = capture(store, repository, attempt, asset, run, attempt.capturedAt());
+    store.create("planning-resource-assessment", run.id(), result);
+  }
+
+  /** Reusable inside the spacecraft transaction, including future schedule commit validation. */
+  Assessment capture(
+      StateStore store,
+      JdbcScheduleRepository repository,
+      Attempt attempt,
+      Asset asset,
+      PlanningRuns.Published run,
+      MissionInstant evaluatedAt) {
     repository.lockSpacecraft(new SpacecraftId(asset.spacecraftId()));
     List<MissionSchedule> heads = List.of();
     boolean headsRead = false;
@@ -82,8 +94,7 @@ final class PlanningResources {
             .find("planning-activity-operation-profiles", activity.id().value(), Evidence.class)
             .ifPresent(state -> operations.put(activity.id().value(), state.body()));
       }
-    var result = derive(attempt, asset, run, heads, profiles, headsRead, operations);
-    store.create("planning-resource-assessment", run.id(), result);
+    return derive(attempt, asset, run, heads, profiles, headsRead, operations, evaluatedAt);
   }
 
   private Estimate telemetry(Asset asset) {
@@ -113,6 +124,20 @@ final class PlanningResources {
       Map<String, Evidence> profiles,
       boolean headsRead,
       Map<String, Evidence> operationProfiles) {
+    return derive(
+        attempt, asset, run, heads, profiles, headsRead, operationProfiles, attempt.capturedAt());
+  }
+
+  Assessment derive(
+      Attempt attempt,
+      Asset asset,
+      PlanningRuns.Published run,
+      List<MissionSchedule> heads,
+      Map<String, Evidence> profiles,
+      boolean headsRead,
+      Map<String, Evidence> operationProfiles,
+      MissionInstant evaluatedAt) {
+    evaluatedAt.requireTai();
     if (!run.inputAttemptId().equals(attempt.id())
         || !run.spacecraftId().equals(asset.spacecraftId()))
       throw new IllegalArgumentException("Resource assessment run binding mismatch");
@@ -147,8 +172,10 @@ final class PlanningResources {
                 .equals(mission.missionDefinitionVersion())
             || source.binding().environment() != Environment.SIMULATION)
           throw new IllegalArgumentException("Resource source binding mismatch");
-        if (source.confidence(attempt.capturedAt()) != Confidence.FRESH)
+        if (source.confidence(evaluatedAt) != Confidence.FRESH)
           issues.add("FRESH_RESOURCE_INITIAL_STATE_REQUIRED");
+        if (candidate.activity().window().start().compareTo(evaluatedAt) < 0)
+          issues.add("CANDIDATE_START_PRECEDES_EVALUATION");
         if (candidate.activity().window().start().compareTo(frame.observedAt()) < 0)
           issues.add("CANDIDATE_PRECEDES_RESOURCE_INITIAL_STATE");
         var forecastEnd = candidate.activity().window().end();
