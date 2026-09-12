@@ -32,4 +32,5 @@ That finite integration comparison is a regression test, not a proof of the assu
 
 The focused spatial/temporal/illumination run passed 18 tests across four classes with no
 failures/errors/skips (`2026-09-12`, local log `/private/tmp/msc-solar-interval.log`). The
-new adapter method is not yet exposed through a deployed API or used to commit schedules.
+adapter method is now exposed through the owner-pinned FD API described in
+`solar-interval-api.md`; it is not yet used to commit schedules.

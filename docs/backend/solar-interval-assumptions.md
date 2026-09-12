@@ -26,7 +26,9 @@ Contract tests cover wrong model/digest/time/area/altitude and unsupported assum
 HTTP/DB test covers role restrictions, revisions, replay after update, history/current reads,
 stale publication and mission mismatch. Flight Dynamics must still fetch an exact owner version,
 check coverage and preserve it in the interval result before Planning can consume this data.
-No deployed endpoint or completed schedule feasibility is claimed by this source change.
+The owner and FD calculation APIs are now deployed and verified together; see
+`solar-interval-api.md` and `scripts/verify-solar-intervals.py`. This does not complete schedule
+feasibility or establish physical validity of the declared assumptions.
 
 The focused run passed four tests across the contract and two HTTP/DB suites, including the
 existing authority-policy regression, with zero failures/errors/skips (`2026-09-12`, local

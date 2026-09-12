@@ -25,7 +25,15 @@ The old point/rectangular event-search APIs are unchanged.
 The integration test uses real PostgreSQL and pinned Orekit data, mocking only the Mission
 Definition HTTP source. It checks positive conditional outcome, source/hash persistence,
 replay without another owner call and rejection of an unexpected owner revision without a
-new result. Deployed multi-service verification and Planning consumption remain pending.
+new result. Planning consumption remains pending.
 
 The focused run passed 16 tests across four classes with zero failures/errors/skips
 (`2026-09-12`, local log `/private/tmp/msc-solar-interval-api.log`).
+
+Mission Definition and Flight Dynamics were independently deployed in the local kind cluster.
+All ten Deployments remained ready, with Planning retaining two replicas. The real
+`scripts/verify-solar-intervals.py` flow passed eight checks: publication/compute role boundaries,
+exact source retention, conditional positive calculation and persisted read, replay after an
+owner update, NOT_ESTABLISHED with a larger declared error, missing-version rejection and
+out-of-extent rejection. Evidence is `.local/solar-interval-verification.json`. Its numeric
+assumptions belong to an isolated synthetic mission and are not physical qualification.
