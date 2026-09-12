@@ -35,7 +35,7 @@ def main():
         credentials.update({'MSC_DATABASE_URL': f'jdbc:postgresql://host.docker.internal:55432/{db_user}',
                             'MSC_DATABASE_USER': db_user,
                             'MSC_DATABASE_PASSWORD': source['MSC_DB_'+service.upper().replace('-', '_')+'_PASSWORD']})
-        if service in ('flight-dynamics', 'simulator', 'acquisition'):
+        if service in ('flight-dynamics', 'simulator', 'acquisition', 'product'):
             credentials.update({key: source[key] for key in ('MSC_S3_ACCESS_KEY', 'MSC_S3_SECRET_KEY')})
         items.append({'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
                       'metadata': {'name': f'msc-{service}-runtime', 'namespace': args.namespace},

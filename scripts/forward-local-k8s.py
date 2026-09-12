@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PORTS = {'tasking': 8101, 'planning': 8102, 'flight-dynamics': 8103,
          'mission-definition': 8104, 'reference-data': 8105, 'ground-operations': 8106,
          'spacecraft-control': 8107,
-         'monitoring': 8109, 'anomaly': 8110, 'acquisition': 8111, 'simulator': 8114}
+         'monitoring': 8109, 'anomaly': 8110, 'acquisition': 8111, 'product': 8112, 'simulator': 8114}
 
 
 def main():

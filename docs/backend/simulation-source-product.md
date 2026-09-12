@@ -1,7 +1,7 @@
 # Product-owned synthetic source packages
 
 Product is an independent Spring Boot module with its own database and `msc-product`
-S3 bucket. This source checkpoint is not yet deployed. Completion-event intake is now
+S3 bucket. It is deployed in local Kubernetes (evidence below). Completion-event intake is now
 connected through the transactional inbox and a durable Product-owned work queue.
 
 POST `/api/products/simulation-source-packages` accepts a `manifestId` UUID and an
@@ -50,9 +50,31 @@ immutable product publication prevents duplicate product records. Work status is
 at `/api/products/simulation-source-packages/{id}/work` and the `/internal` equivalent.
 `SimulationProductWorkerTest` exercises real DB inbox deduplication, recovery after an
 expired claim, transient retry, owner-hash mismatch and invalid event envelope rollback.
-RabbitMQ live delivery remains to be verified after deployment.
+RabbitMQ live delivery was subsequently verified below.
 
-Next integration: independent K8s deployment, actual
-cross-service source copy verification, product download, synthetic quicklook and quality
+Next integration: product download, synthetic quicklook and quality
 workflow. Packet-level reconstruction, actual instrument L0 qualification and evidence-based
 request fulfillment remain in the full backend scope.
+
+
+## Deployed verification — 2026-09-12
+
+Product image `msc-product:7ccb4983be48a3f1217ae3e2` and Acquisition image
+`msc-acquisition:df55f00d9f9cca98ff7e7324` rolled out. Product has its own Secret,
+DB account, Service and Deployment; local API port 8112 is managed by the API forward
+supervisor. The cluster now contains 12 independent services. Planning and Acquisition
+retain two replicas each; Product starts with one.
+
+`verify-simulation-downlink.py --with-manifest` created a fresh real-API synthetic
+IMAGE/downlink/reception/manifest flow. Before any explicit Product create call,
+`verify-simulation-product.py` observed automatic STORED work and product metadata.
+Product `a08bc407-3927-445e-aad0-721dffcf0067` completed in one attempt, preserving
+one 1,000,000-byte source. Direct authenticated reads of the Product MinIO bucket
+confirmed exact source size/hash and the JSON index's evidence and quality limits.
+Manual creation/replay retained the automatic product; requester GET/work access was denied.
+
+The index object is
+`s3://msc-product/e039117b697665cbcde4cb888f37932b1bb98cc4565e2acc76a5b01da67da290`.
+Evidence: `.local/simulation-product-verification.json`, `/private/tmp/msc-product-live.log`,
+`/private/tmp/msc-product-downlink-live.log`. This verifies automatic lossless synthetic
+source packaging, not qualified instrument L0, quicklook or request fulfillment.

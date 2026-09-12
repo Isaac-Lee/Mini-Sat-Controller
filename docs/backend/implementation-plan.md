@@ -124,3 +124,12 @@ arrival atomically updates its missing-source list and emits simulation complete
 The deployed two-replica flow passed pre-reception INCOMPLETE to automatic COMPLETE;
 see [manifest evidence](acquisition-simulation-manifest.md). Packet-level gaps, independent
 Product processing, L0/quicklook and request fulfillment remain unfinished.
+
+
+### Independent Product source package checkpoint (2026-09-12)
+
+Product now consumes simulation completeness events through its own durable queue, copies
+and verifies sources via Acquisition HTTP APIs, and retains raw files plus an evidence index
+in its own S3 bucket. The 12th service was deployed and actual RabbitMQ-to-MinIO generation
+passed; see [Product evidence](simulation-source-product.md). This does not complete L0,
+quicklook, packet reconstruction, product quality decisions or request fulfillment.
