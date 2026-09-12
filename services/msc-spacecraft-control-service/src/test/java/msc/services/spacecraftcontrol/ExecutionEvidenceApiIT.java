@@ -289,6 +289,54 @@ class ExecutionEvidenceApiIT {
   }
 
   @Test
+  void currentOwnerAuthorityAndFreshTelemetryCombineWithStoredHumanApprovals() {
+    var prepared = new CommandCompiler(json).compile(
+        new msc.domain.shared.Ids.CommandLoadId(UUID.randomUUID().toString()), CommandCompilerTest.fixture(true));
+    String id = prepared.load().id().value();
+    store.transaction(() -> store.create("prepared-command-load", id, prepared));
+    var catalog = prepared.sources().catalogsByActivity().values().iterator().next();
+    var context = new msc.contracts.AuthorityContracts.Context(catalog.template().operation(),
+        msc.domain.anomaly.MissionPhase.ROUTINE, "NOMINAL", catalog.activity().riskClass());
+    var policy = new msc.contracts.AuthorityContracts.Policy("sat", "m1", List.of(
+        new msc.contracts.AuthorityContracts.Rule(context,
+            msc.domain.missiondefinition.AuthorityPolicy.Requirement.TWO_PERSON_APPROVAL)), "test");
+    var model = new msc.contracts.SimulationPlanningContracts.Model("sat", "m1", "SIMULATION",
+        msc.domain.anomaly.MissionPhase.ROUTINE, "NOMINAL", 1000, 1, 30, 10, true, 1, 2, 0, .5, 0, "test");
+    var binding = new msc.domain.monitoring.OperationalTelemetry.Binding("sat", 1, "simulator:test",
+        msc.domain.monitoring.OperationalTelemetry.Environment.SIMULATION, 3, 0, "test");
+    var frame = new msc.domain.monitoring.OperationalTelemetry.Frame(UUID.randomUUID(), "sat", 1,
+        "simulator:test", 1, MissionInstant.tai(990), msc.domain.monitoring.TelemetryObservation.Quality.GOOD,
+        msc.domain.monitoring.OperationalTelemetry.Mode.NOMINAL, 100, 0, 1, "test");
+    var estimate = msc.domain.monitoring.OperationalTelemetry.Estimate.empty(binding)
+        .observe(frame, MissionInstant.tai(990)).estimate();
+    org.mockito.Mockito.when(owners.get("mission-definition", "/internal/authority-policies/sat", com.fasterxml.jackson.databind.JsonNode.class))
+        .thenReturn(json.tree(new StateStore.State<>("sat", 1, policy)));
+    org.mockito.Mockito.when(owners.get("mission-definition", "/internal/simulation-planning-models/sat", com.fasterxml.jackson.databind.JsonNode.class))
+        .thenReturn(json.tree(new StateStore.State<>("sat", 1, model)));
+    org.mockito.Mockito.when(owners.get("monitoring", "/internal/spacecraft-estimates/sat", com.fasterxml.jackson.databind.JsonNode.class))
+        .thenReturn(json.tree(Map.of("estimate", new StateStore.State<>("sat", 1, estimate))));
+    var now = new java.util.concurrent.atomic.AtomicReference<>(MissionInstant.tai(990));
+    var check = new CommandAuthorityCheckApi(store, owners, json, now::get);
+    var grants = new CommandApprovalApi(store, now::get);
+    var request = new CommandApprovalApi.Grant(prepared.load().checksum(), MissionInstant.tai(999), 0);
+    var one = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("operator1", "unused");
+    var two = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("operator2", "unused");
+    grants.grant(id, request, "one", one);
+    assertTrue(check.check(id).reasons().contains(msc.domain.spacecraftcontrol.CommandReleasePolicy.Reason.APPROVAL_MISSING));
+    grants.grant(id, request, "two", two);
+    assertTrue(check.check(id).reasons().isEmpty());
+    now.set(MissionInstant.tai(993));
+    assertTrue(check.check(id).reasons().contains(msc.domain.spacecraftcontrol.CommandReleasePolicy.Reason.STALE_CONTEXT));
+    now.set(MissionInstant.tai(990));
+    org.mockito.Mockito.when(owners.get("mission-definition", "/internal/authority-policies/sat", com.fasterxml.jackson.databind.JsonNode.class))
+        .thenReturn(json.tree(new StateStore.State<>("sat", 2,
+            new msc.contracts.AuthorityContracts.Policy("sat", "m1", List.of(), "deny all"))));
+    assertTrue(check.check(id).reasons().contains(msc.domain.spacecraftcontrol.CommandReleasePolicy.Reason.AUTO_FORBIDDEN));
+    assertEquals(403, client.withBasicAuth("requester", PASSWORD).postForEntity(
+        "/api/command-loads/" + id + "/authority-check", null, String.class).getStatusCode().value());
+  }
+
+  @Test
   void preparesOnlyOwnerBoundSourcesAndReplaysPersistedArtifact() {
     var source = CommandCompilerTest.fixture();
     org.mockito.Mockito.when(

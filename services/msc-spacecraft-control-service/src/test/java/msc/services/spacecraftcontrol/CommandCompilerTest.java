@@ -13,7 +13,9 @@ import msc.platform.*;
 import org.junit.jupiter.api.Test;
 
 class CommandCompilerTest {
-  static CommandCompiler.Sources fixture() {
+  static CommandCompiler.Sources fixture() { return fixture(false); }
+
+  static CommandCompiler.Sources fixture(boolean schedulable) {
     var catalog =
         new CatalogEntry(
             "image",
@@ -24,8 +26,8 @@ class CommandCompilerTest {
                 "image",
                 true,
                 Set.of(new ResourceId("payload")),
-                Set.of(),
-                Set.of(),
+                schedulable ? Set.of(msc.domain.anomaly.MissionPhase.ROUTINE) : Set.of(),
+                schedulable ? Set.of("NOMINAL") : Set.of(),
                 AuthorityPolicy.RiskClass.LOW,
                 "template:1"),
             new CommandTemplate(
