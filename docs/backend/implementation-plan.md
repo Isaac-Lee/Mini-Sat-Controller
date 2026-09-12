@@ -196,3 +196,13 @@ automatic HTTP verification on two replicas passed; see [camera integration](pla
 A real test also exposed and corrected geometry-budget starvation from incomplete old fixtures.
 Continuous exposure, full attitude sequence, combined feasibility and actual schedule commitment
 remain required; this checkpoint does not promote candidates to FEASIBLE.
+
+
+### User-approved V1 scope adjustment (2026-09-12)
+
+The user narrowed completion to a first version where all main functions can be exercised.
+[v1-functional-scope.md](v1-functional-scope.md) now defines acceptance and supersedes older
+entries that treated continuous exposure/precision attitude work as immediate blockers.
+Prioritize one connected request-to-synthetic-product workflow using the existing FD algorithms,
+with guided review and visible approximation limits. Finish schedule/Control/request-product
+integration, verify the functional path, then stop expanding numerical or hardening scope.
