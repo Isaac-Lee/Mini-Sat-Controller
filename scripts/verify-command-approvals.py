@@ -28,6 +28,10 @@ def main():
     call(8107, 'POST', catalog_check, user='requester', expected=403)
     call(8107, 'POST', catalog_check, user='operator1', expected=404)
     call(8107, 'POST', '/internal/command-loads/' + run + '/catalog-approval-check', expected=404)
+    authority_check = '/api/command-loads/' + run + '/authority-check'
+    call(8107, 'POST', authority_check, user='requester', expected=403)
+    call(8107, 'POST', authority_check, user='operator1', expected=404)
+    call(8107, 'POST', '/internal/command-loads/' + run + '/authority-check', expected=404)
     # Re-run the real owner-absence and existing execution-evidence regression after replacement.
     importlib.import_module('verify-command-preparation').main()
     report = {'checks': ['requester/service cannot grant or revoke human approval',
@@ -35,6 +39,7 @@ def main():
                          'missing load approval list rejected', 'requester approval read denied',
                          'internal route service boundary preserved',
                          'catalog approval check rejects requester and missing loads',
+                         'current authority check rejects requester and missing loads',
                          'existing preparation and execution evidence regression passed'],
               'scope': 'Deployed denial and regression checks; positive approval lifecycle is covered by integration tests'}
     (api.ROOT / '.local/command-approval-verification.json').write_text(json.dumps(report, indent=2) + '\n')

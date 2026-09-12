@@ -37,5 +37,12 @@ is tested with the running Spring security context. Actual cross-service positiv
 verification remains pending.
 
 The focused run passed 22 tests across four classes with zero failures/errors/skips
-(`2026-09-12`, local log `/private/tmp/msc-current-authority-check.log`). The current Control
-deployment does not yet contain this owner-composed authority endpoint.
+(`2026-09-12`, local log `/private/tmp/msc-current-authority-check.log`). Control was then
+independently updated in the local kind cluster. All ten service Deployments remained ready,
+including Planning's two replicas.
+
+The extended `scripts/verify-command-approvals.py` passed deployed requester denial and
+operator/service missing-load checks for this endpoint. The encompassing schedule, catalog
+approval, human approval, preparation and persisted execution-evidence regression chain
+also passed (`/private/tmp/msc-current-authority-live.log`). This proves route/rejection
+behavior after deployment, not a positive multi-owner check of a production-prepared load.
