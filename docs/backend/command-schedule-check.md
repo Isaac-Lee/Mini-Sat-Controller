@@ -30,5 +30,12 @@ Planning head/history separation is verified at the repository boundary. Deploym
 cross-service positive checking remain separate verification steps.
 
 The focused compiler/check/query run passed nine tests with no failures/errors/skips
-(`2026-09-12`, local log `/private/tmp/msc-schedule-check.log`). These endpoints have not
-yet been rolled out to the running Planning and Control services.
+(`2026-09-12`, local log `/private/tmp/msc-schedule-check.log`). Planning and Control were
+then independently rolled out to the local kind cluster, preserving Planning's two replicas.
+All ten service Deployments were ready after the updates.
+
+`scripts/verify-command-schedule-check.py` passed deployed requester denial and missing
+artifact checks at both new endpoints, then reran the approval, preparation and persisted
+execution-evidence regression checks. Evidence is recorded in
+`.local/command-schedule-check-verification.json`. This confirms deployed routes and rejection
+behavior; it does not claim positive production schedule-to-command preparation or release.
