@@ -63,6 +63,11 @@ must be surfaced, not replaced with hardcoded successful fixtures.
 
 ## Current checkpoint
 
+[Independent Control intake](control-evidence.md) is now the tenth deployable service.
+Simulator-delivered observations reach its owned database through RabbitMQ and retain explicit
+unbound simulation status. Command preparation/release and Space Link execution remain pending;
+the existing schedule events are durably deferred for that workflow.
+
 Shared runtime, mission-definition, initial Orekit flight-dynamics, tasking and
 approved geographic reference services are implemented and exercised. [Runtime evidence](runtime-verification.md) records
 114 tests in the latest full run and a subsequent six-test Planning intake recheck,

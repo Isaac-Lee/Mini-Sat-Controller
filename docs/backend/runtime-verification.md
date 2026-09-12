@@ -1,6 +1,15 @@
 # Backend runtime verification — 2026-09-11
 
-Current checkpoint (2026-09-12): nine independent services including Planning intake.
+Current checkpoint (2026-09-12): ten independent services including Planning and Control intake.
+
+## 2026-09-12 independent Control intake
+
+The new Control module passed three actual broker/DB/HTTP integration tests, was independently
+deployed, and received a simulator-delivered observation through RabbitMQ. Five deployed
+checks preserved exact source evidence and `UNBOUND_SIMULATION_EVIDENCE` status and verified
+read roles. See [Control intake and resource measurements](control-evidence.md).
+Planning retains two replicas; other service images were preserved. The full 270-test baseline
+below predates this module and is not claimed as a test of the newly added Control code.
 
 ## 2026-09-12 complete committed-source reactor
 
