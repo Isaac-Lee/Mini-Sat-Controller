@@ -24,7 +24,10 @@ def main():
     parser.add_argument('--with-simulation-commit', action='store_true', help='Verify V1 schedule commitment and Control preparation (requires --with-camera)')
     parser.add_argument('--with-simulation-dispatch', action='store_true', help='Execute and reconcile the prepared V1 simulation load (requires --with-simulation-commit)')
     parser.add_argument('--with-v1-downlink', action='store_true', help='Continue request-bound execution through ground downlink and synthetic product (requires --with-simulation-dispatch)')
+    parser.add_argument('--with-v1-result', action='store_true', help='Complete the request and verify requester downloads (requires --with-v1-downlink)')
     args = parser.parse_args()
+    if args.with_v1_result and not args.with_v1_downlink:
+        parser.error('--with-v1-result requires --with-v1-downlink')
     if args.with_v1_downlink and not args.with_simulation_dispatch:
         parser.error('--with-v1-downlink requires --with-simulation-dispatch')
     if args.with_simulation_dispatch and not args.with_simulation_commit:
@@ -187,11 +190,16 @@ def main():
         if args.with_simulation_commit:
             result['simulationSchedule'] = importlib.import_module('verify-simulation-schedule').verify(call, published_run, run, args.with_simulation_dispatch, args.with_v1_downlink)
             result['passed'] += ['V1 selected schedule persists with request binding', 'Tasking scheduled progress', 'Control prepares committed schedule']
+        if args.with_v1_result:
+            result['requestResult'] = importlib.import_module('verify-v1-result').execute(
+                call, request_id, result['simulationSchedule']['execution'], run)
+            (ROOT / '.local/v1-functional-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         (ROOT / '.local/planning-search-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))
     finally:
         current = call(8101, 'GET', '/api/requests/' + request_id, user='requester')
-        call(8101, 'POST', '/api/requests/' + request_id + '/cancel', {'expectedVersion': current['version']}, run+'cancel', 'requester')
+        if current['body']['request']['status'] not in ['FULFILLED', 'CANCELLED', 'EXPIRED', 'REJECTED']:
+            call(8101, 'POST', '/api/requests/' + request_id + '/cancel', {'expectedVersion': current['version']}, run+'cancel', 'requester')
         if published_run:
             assert call(8102, 'GET', '/internal/planning/runs/'+published_run['id']) == published_run
         if published_resources:
