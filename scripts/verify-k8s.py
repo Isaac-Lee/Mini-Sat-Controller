@@ -22,7 +22,7 @@ def main():
     deployments = {d['metadata']['name']: d for d in get('deployments')}
     assert set(deployments) == set(images)
     for name, deployment in deployments.items():
-        expected = 2 if name == 'planning' else 1
+        expected = 2 if name in {'planning', 'acquisition'} else 1
         assert deployment['spec']['replicas'] == expected
         assert deployment['status']['observedGeneration'] == deployment['metadata']['generation']
         assert deployment['status'].get('updatedReplicas') == expected
@@ -89,7 +89,7 @@ def main():
                 'attemptId': attempt_id,
                 'planningPods': [{'name': p['metadata']['name'], 'uid': p['metadata']['uid'],
                                   'imageID': p['status']['containerStatuses'][0]['imageID']} for p in pods],
-                'passed': ['independent images/deployments', 'only Planning scaled to two',
+                'passed': ['independent images/deployments', 'Planning and Acquisition scaled to two',
                            'all desired replicas ready', 'both Planning Pods serve identical durable evidence'],
                 'scope': 'Local kind with shared local infrastructure; no production load/HPA claim'}
     if run_id:

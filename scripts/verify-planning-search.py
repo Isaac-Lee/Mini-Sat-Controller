@@ -90,7 +90,10 @@ def main():
         (ROOT / '.local/simulation-planning-model-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))
         return
-    utc = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=300)).strftime('%Y-%m-%dT%H:%M:%S')
+    # Leave wall-clock time for real operator approval on a busy local cluster;
+    # execution itself advances the simulator clock without waiting for this epoch.
+    lead_seconds = 900 if args.with_simulation_dispatch else 300
+    utc = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=lead_seconds)).strftime('%Y-%m-%dT%H:%M:%S')
     epoch = call(8103, 'POST', '/internal/time/utc-to-tai', {'utc': utc})
     call(8103, 'POST', '/internal/orbits', {
         'solutionId': run, 'spacecraftId': craft, 'epoch': epoch,

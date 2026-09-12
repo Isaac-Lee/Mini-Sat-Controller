@@ -238,3 +238,17 @@ from the actual request-bound IMAGE payload through contact prediction/booking, 
 Acquisition completion, Product-owned bytes and synthetic preview. See
 [V1 downlink scheduling](simulation-downlink-schedule-v1.md). Final requester-facing fulfillment
 binding remains outstanding until that endpoint and guided review are verified.
+
+
+### V1 functional acceptance completed (2026-09-12)
+
+Tasking now binds confirmed IMAGE/DOWNLINK execution and Product/Acquisition provenance to
+the original request revision, stores a simulation result and marks the request FULFILLED.
+Request owners can retrieve the result and download its exact synthetic source/preview bytes.
+Completion is explicitly functional simulation completion, not a physical quality assessment.
+
+The single `python3 scripts/verify-v1.py` command passed against local K8s, including the full
+request-to-download flow, preserved public GP/derived TLE, safety recovery and replica checks.
+Request `0e1eed4c-e2a4-4e6c-9909-5066279f846e` remains available for review. See
+[V1 review](v1-review.md). The user-approved V1 BE scope is complete; stop further precision
+FD implementation and additional service extraction until a subsequent request.

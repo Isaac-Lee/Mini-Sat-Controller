@@ -49,16 +49,17 @@ request, schedule, command, acquisition or product flows. Advanced checks must n
 new prerequisite for delivering this functional version. Do not label deferred work as tested
 or silently convert missing evidence into a scientific claim.
 
-## Current integration gaps to close
+## V1 completion evidence (2026-09-12)
 
-Public orbit, pointing, sampled footprints, automatic Planning evidence, telemetry, ground
-booking, synthetic execution/downlink, Acquisition and Product APIs already have individual
-verification paths. Schedule commitment and Control preparation/approval now use the selected request. V1 Control
-delivery, IMAGE execution, lost ACK reconciliation and execution binding have passed live API verification. Ground downlink, Acquisition completion and Product generation now pass for the same request-bound
-payload. The remaining priority is requester-facing result lookup and completion status, followed
-by the final guided review and completion audit.
-Successful isolated scripts alone do not prove that connected V1 scenario is finished.
+The connected V1 API scenario passed with request
+`0e1eed4c-e2a4-4e6c-9909-5066279f846e`: selected schedule, reviewed Control delivery,
+IMAGE, booked DOWNLINK, lost-link reconciliation, Acquisition, Product, request-owned
+result registration and requester downloads. The request remains FULFILLED with explicit
+SIMULATION_V1_COMPLETE provenance. Raw 1,000,000 bytes and the 651-byte synthetic PNG
+were downloaded through Tasking and independently checked by SHA-256.
 
-Completion means the user can run the guided scenario and inspect each stage with persistent
-IDs and outputs. Finish the integration and a small useful verification set, then stop expanding
-scope. Preserve the unrelated frontend work already present in the checkout.
+The same guided command checked NORAD 63229's preserved GP/derived TLE, telemetry/safety
+recovery and all twelve independent K8s deployments (fourteen ready replicas).
+See [the V1 review guide](v1-review.md) for the command, persistent IDs and scope.
+V1 BE functional acceptance is complete; deferred numerical and production work is not
+claimed complete. The unrelated frontend has not been included in this API verification.

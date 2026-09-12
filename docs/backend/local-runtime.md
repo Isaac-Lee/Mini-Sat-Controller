@@ -22,8 +22,9 @@ that file when reusing existing volumes.
 
 ## Current local K8s runtime
 
-The active verification environment runs the nine services in the dedicated `msc-local`
-kind cluster, with two Planning replicas. Local API ports are provided by:
+The active V1 environment runs twelve services in the dedicated `msc-local`
+kind cluster, with two Planning replicas and two Acquisition replicas.
+Use the [V1 review guide](v1-review.md) for the connected functional scenario. Local API ports are provided by:
 
 ```sh
 python3 scripts/forward-local-k8s.py --kubeconfig .local/k8s/kubeconfig
@@ -53,10 +54,10 @@ export MSC_OREKIT_SHA256=ddfd02ae655ba0ac9d5430146a00a2941405983a081184e761d56e8
 The runner copies each built JAR to an immutable SHA-256 path under `.local/runtime`
 before launch, so subsequent Maven builds cannot replace a running application.
 
-Nine service executables are implemented at this checkpoint: mission-definition,
-flight-dynamics, tasking, reference-data, ground-operations, simulator, monitoring, anomaly and planning. The
-runner knows the planned service names but cannot launch unimplemented services.
-Planning provides [durable input collection](planning-inputs.md), [recorded runs](planning-runs.md) and [resource assessments](planning-resources.md); schedule commitment is still pending.
+Twelve service executables are implemented: mission-definition, flight-dynamics, tasking,
+reference-data, ground-operations, simulator, monitoring, anomaly, planning, spacecraft-control,
+acquisition and product.
+Planning provides [durable input collection](planning-inputs.md), [recorded runs](planning-runs.md) and [resource assessments](planning-resources.md); V1 simulation schedule commitment and request result delivery are available.
 Start it with `scripts/run-local-service.sh planning 8102`; run
 `python3 scripts/verify-planning-inputs.py` with the prerequisite services active.
 All listener and compose ports are bound to localhost. Basic authentication is
