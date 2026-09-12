@@ -48,4 +48,15 @@ class PlanningScheduleApiTest {
     assertThrows(ApiException.class, () -> api.version(new PlanningScheduleApi.Query(key, 3)));
     assertThrows(IllegalArgumentException.class, () -> new PlanningScheduleApi.Query(key, 0));
   }
+
+  @Test
+  void currentReadsHeadWithoutFabricatingMissingHistory() {
+    var snapshot = new MissionSchedule.Snapshot(key, 4, key.horizon().start(),
+        List.of(), List.of(), ResourceValidation.notEvaluated());
+    when(store.find("mission-schedule", json.fingerprint(key), MissionSchedule.Snapshot.class))
+        .thenReturn(Optional.of(new StateStore.State<>(json.fingerprint(key), 4, snapshot)), Optional.empty());
+    assertEquals(snapshot, api.current(key));
+    assertThrows(ApiException.class, () -> api.current(key));
+    verify(store, never()).version(anyString(), anyString(), anyLong(), any());
+  }
 }

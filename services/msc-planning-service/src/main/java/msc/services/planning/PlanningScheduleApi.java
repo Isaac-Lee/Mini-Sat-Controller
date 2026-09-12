@@ -31,4 +31,12 @@ public class PlanningScheduleApi {
         .orElseThrow(() -> ApiException.missing("Committed schedule version not found"))
         .snapshot();
   }
+
+  @PostMapping({"/api/planning/schedules/current", "/internal/planning/schedules/current"})
+  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
+  public MissionSchedule.Snapshot current(@RequestBody ScheduleKey key) {
+    return schedules.latest(key)
+        .orElseThrow(() -> ApiException.missing("Committed schedule not found"))
+        .snapshot();
+  }
 }
