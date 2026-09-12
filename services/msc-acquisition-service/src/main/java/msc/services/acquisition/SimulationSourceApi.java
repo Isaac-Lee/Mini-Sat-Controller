@@ -34,12 +34,19 @@ public class SimulationSourceApi {
   private final ServiceHttp http;
   private final ObjectStorage objects;
   private final Json json;
+  private final SimulationManifestApi manifests;
 
-  public SimulationSourceApi(StateStore store, ServiceHttp http, ObjectStorage objects, Json json) {
+  public SimulationSourceApi(
+      StateStore store,
+      ServiceHttp http,
+      ObjectStorage objects,
+      Json json,
+      SimulationManifestApi manifests) {
     this.store = store;
     this.http = http;
     this.objects = objects;
     this.json = json;
+    this.manifests = manifests;
   }
 
   @PostMapping("/api/acquisition/simulation-sources")
@@ -107,6 +114,7 @@ public class SimulationSourceApi {
               return existing.get();
             }
             var saved = store.create("simulation-acquisition-source", request.receiptId(), source);
+            manifests.sourceStored(request.receiptId());
             store.event(
                 "SimulationAcquisitionSourceStored",
                 request.receiptId(),

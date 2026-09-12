@@ -39,7 +39,7 @@ class SimulationManifestTest extends SimulationSourceTest {
   SimulationManifestApi manifests(JsonNode plan) {
     when(http.get("simulator", "/internal/simulation/downlinks/" + id, JsonNode.class))
         .thenReturn(plan);
-    return new SimulationManifestApi(store, http, json);
+    return new SimulationManifestApi(store, http, json, db);
   }
 
   void received(JsonNode plan) {
@@ -121,6 +121,87 @@ class SimulationManifestTest extends SimulationSourceTest {
         api.create(new SimulationManifestApi.Create(scenario, List.of(id)), "create", actor);
     assertEquals("COMPLETE", saved.path("body").path("completeness").asText());
     assertEquals(1, db.queryForObject("SELECT count(*) FROM outbox", Integer.class));
+  }
+
+  @Test
+  void sourceImportAutomaticallyClosesRegisteredGap() throws Exception {
+    var plan = plan();
+    var manifests = manifests(plan);
+    String manifestId =
+        manifests
+            .create(new SimulationManifestApi.Create(scenario, List.of(id)), "create", actor)
+            .path("id")
+            .asText();
+    ((ObjectNode) receipt.path("body")).put("planSha256", json.fingerprint(plan.path("body")));
+    api.acquire(request, "import", actor);
+    assertEquals("COMPLETE", manifests.read(manifestId).body().completeness());
+    assertEquals(
+        1,
+        db.queryForObject(
+            "SELECT count(*) FROM outbox WHERE event_type='SimulationAcquisitionDataComplete'",
+            Integer.class));
+    api.acquire(request, "import-again", actor);
+    assertEquals(2, store.history("simulation-acquisition-manifest", manifestId).size());
+  }
+
+  @Test
+  void completionEventFailureRollsBackSourceAndManifestTogether() throws Exception {
+    var plan = plan();
+    var manifests = manifests(plan);
+    String manifestId =
+        manifests
+            .create(new SimulationManifestApi.Create(scenario, List.of(id)), "create", actor)
+            .path("id")
+            .asText();
+    ((ObjectNode) receipt.path("body")).put("planSha256", json.fingerprint(plan.path("body")));
+    db.execute(
+        "ALTER TABLE outbox ADD CONSTRAINT reject_completion CHECK (event_type <>"
+            + " 'SimulationAcquisitionDataComplete')");
+    try {
+      assertThrows(RuntimeException.class, () -> api.acquire(request, "import", actor));
+      assertTrue(
+          store
+              .find("simulation-acquisition-source", id, SimulationSourceApi.Source.class)
+              .isEmpty());
+      assertEquals("INCOMPLETE", manifests.read(manifestId).body().completeness());
+    } finally {
+      db.execute("ALTER TABLE outbox DROP CONSTRAINT reject_completion");
+    }
+    api.acquire(request, "import", actor);
+    assertEquals("COMPLETE", manifests.read(manifestId).body().completeness());
+    assertEquals(2, db.queryForObject("SELECT count(*) FROM outbox", Integer.class));
+  }
+
+  @Test
+  void concurrentRegistrationAndImportCannotLoseCompletion() throws Exception {
+    var plan = plan();
+    var manifests = manifests(plan);
+    ((ObjectNode) receipt.path("body")).put("planSha256", json.fingerprint(plan.path("body")));
+    var barrier = new java.util.concurrent.CyclicBarrier(2);
+    try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+      var registration =
+          pool.submit(
+              () -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return manifests.create(
+                    new SimulationManifestApi.Create(scenario, List.of(id)), "race-create", actor);
+              });
+      var reception =
+          pool.submit(
+              () -> {
+                barrier.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                return api.acquire(request, "race-import", actor);
+              });
+      String manifestId =
+          registration.get(30, java.util.concurrent.TimeUnit.SECONDS).path("id").asText();
+      reception.get(30, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals("COMPLETE", manifests.read(manifestId).body().completeness());
+      assertEquals(
+          1,
+          db.queryForObject(
+              "SELECT count(*) FROM outbox WHERE event_type='SimulationAcquisitionDataComplete'",
+              Integer.class));
+    }
   }
 
   @Test

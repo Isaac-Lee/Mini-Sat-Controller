@@ -43,11 +43,17 @@ public class SimulationManifestApi {
   private final StateStore store;
   private final ServiceHttp http;
   private final Json json;
+  private final org.springframework.jdbc.core.JdbcTemplate db;
 
-  public SimulationManifestApi(StateStore store, ServiceHttp http, Json json) {
+  public SimulationManifestApi(
+      StateStore store,
+      ServiceHttp http,
+      Json json,
+      org.springframework.jdbc.core.JdbcTemplate db) {
     this.store = store;
     this.http = http;
     this.json = json;
+    this.db = db;
   }
 
   @PostMapping("/api/acquisition/simulation-manifests")
@@ -101,8 +107,16 @@ public class SimulationManifestApi {
         request,
         () -> {
           String id = UUID.randomUUID().toString();
+          request.planIds().stream()
+              .sorted()
+              .forEach(plan -> store.lock("simulation-acquisition-source:" + plan));
           var manifest = account(request.scenarioId(), expected);
           var saved = store.create("simulation-acquisition-manifest", id, manifest);
+          for (String plan : request.planIds())
+            db.update(
+                "INSERT INTO simulation_manifest_source(manifest_id,plan_id) VALUES (?,?)",
+                id,
+                plan);
           publishComplete(saved, null);
           return saved;
         });
@@ -147,18 +161,27 @@ public class SimulationManifestApi {
   public JsonNode refresh(
       @PathVariable String id, @RequestHeader("Idempotency-Key") String key, Authentication actor) {
     return store.idempotent(
-        "simulation-manifest-refresh:" + actor.getName(),
-        key,
-        id,
-        () -> {
-          store.lock("simulation-acquisition-manifest:" + id);
-          var old = read(id);
-          var updated = account(old.body().scenarioId(), old.body().expected());
-          if (json.fingerprint(updated).equals(json.fingerprint(old.body()))) return old;
-          var saved = store.update("simulation-acquisition-manifest", id, old.version(), updated);
-          publishComplete(saved, old.body());
-          return saved;
-        });
+        "simulation-manifest-refresh:" + actor.getName(), key, id, () -> refreshOwned(id));
+  }
+
+  // Invoked in the source import transaction, after bytes and source metadata are verified.
+  void sourceStored(String planId) {
+    for (String id :
+        db.queryForList(
+            "SELECT manifest_id FROM simulation_manifest_source WHERE plan_id=? ORDER BY"
+                + " manifest_id",
+            String.class,
+            planId)) refreshOwned(id);
+  }
+
+  private StateStore.State<Manifest> refreshOwned(String id) {
+    store.lock("simulation-acquisition-manifest:" + id);
+    var old = read(id);
+    var updated = account(old.body().scenarioId(), old.body().expected());
+    if (json.fingerprint(updated).equals(json.fingerprint(old.body()))) return old;
+    var saved = store.update("simulation-acquisition-manifest", id, old.version(), updated);
+    publishComplete(saved, old.body());
+    return saved;
   }
 
   private void publishComplete(StateStore.State<Manifest> saved, Manifest previous) {

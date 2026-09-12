@@ -30,7 +30,15 @@ owner I/O, creation already complete, outbox rollback/retry, and invalid expecta
 Inherited source tests also run. This does not prove deployed HTTP authorization or
 RabbitMQ delivery of manifest completion.
 
-Automatic reconciliation after source arrival and independent Product consumption remain
-to be connected. No manifest here asserts packet-level completeness, physical sensor
+Source arrival now reconciles registered manifests automatically in the same database
+transaction as source metadata/history and its outbox event. The membership table is
+created/backfilled by migration V3. Registration locks expected source IDs in sorted
+order before accounting and linking; import holds the same source lock. Thus registration
+and source arrival cannot miss one another. A source update locks linked manifests in
+sorted order. No owner HTTP or S3 I/O is added inside these transactions.
+
+Tests additionally cover automatic completion on import, atomic rollback of both source
+and manifest when the completion event fails, and concurrent registration/import without
+lost completion. Independent Product consumption remains to be connected. No manifest here asserts packet-level completeness, physical sensor
 qualification, a request/assignment binding, L0 generation, quicklook or fulfillment.
 Those remain required by the full backend goal.

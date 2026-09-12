@@ -45,14 +45,18 @@ class SimulationSourceTest {
             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     Flyway.configure().dataSource(ds).load().migrate();
     db = new JdbcTemplate(ds);
-    db.execute("TRUNCATE state_head,state_history,idempotency,outbox,inbox,simulation_source_work");
+    db.execute(
+        "TRUNCATE"
+            + " state_head,state_history,idempotency,outbox,inbox,simulation_source_work,simulation_manifest_source");
     store =
         new StateStore(
             db,
             new TransactionTemplate(new DataSourceTransactionManager(ds)),
             json,
             () -> MissionInstant.tai(1000));
-    api = new SimulationSourceApi(store, http, objects, json);
+    api =
+        new SimulationSourceApi(
+            store, http, objects, json, new SimulationManifestApi(store, http, json, db));
     String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     receipt =
         JsonMapper.builder()
