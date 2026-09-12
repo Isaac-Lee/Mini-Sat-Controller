@@ -1,0 +1,55 @@
+name: msc-local
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: msc_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${MSC_POSTGRES_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_TASKING_PASSWORD: ${MSC_DB_TASKING_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_PLANNING_PASSWORD: ${MSC_DB_PLANNING_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_FLIGHT_DYNAMICS_PASSWORD: ${MSC_DB_FLIGHT_DYNAMICS_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_MISSION_DEFINITION_PASSWORD: ${MSC_DB_MISSION_DEFINITION_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_REFERENCE_DATA_PASSWORD: ${MSC_DB_REFERENCE_DATA_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_GROUND_OPERATIONS_PASSWORD: ${MSC_DB_GROUND_OPERATIONS_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_SPACECRAFT_CONTROL_PASSWORD: ${MSC_DB_SPACECRAFT_CONTROL_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_SPACE_LINK_PASSWORD: ${MSC_DB_SPACE_LINK_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_MONITORING_PASSWORD: ${MSC_DB_MONITORING_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_ANOMALY_PASSWORD: ${MSC_DB_ANOMALY_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_ACQUISITION_PASSWORD: ${MSC_DB_ACQUISITION_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_PRODUCT_PASSWORD: ${MSC_DB_PRODUCT_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_MISSION_PROJECTION_PASSWORD: ${MSC_DB_MISSION_PROJECTION_PASSWORD:?run scripts/dev-env.sh}
+      MSC_DB_SIMULATOR_PASSWORD: ${MSC_DB_SIMULATOR_PASSWORD:?run scripts/dev-env.sh}
+    ports: ["127.0.0.1:55432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/10-msc-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msc_admin -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  rabbitmq:
+    image: rabbitmq:4.1.4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${MSC_RABBIT_USER:?}
+      RABBITMQ_DEFAULT_PASS: ${MSC_RABBIT_PASSWORD:?}
+    ports: ["127.0.0.1:55672:5672", "127.0.0.1:55673:15672"]
+    volumes: ["rabbit-data:/var/lib/rabbitmq"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  objectstore:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MSC_S3_ACCESS_KEY:?}
+      MINIO_ROOT_PASSWORD: ${MSC_S3_SECRET_KEY:?}
+    ports: ["127.0.0.1:59000:9000", "127.0.0.1:59001:9001"]
+    volumes: ["object-data:/data"]
+volumes:
+  postgres-data:
+  rabbit-data:
+  object-data:
