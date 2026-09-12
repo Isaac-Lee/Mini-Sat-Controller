@@ -234,4 +234,129 @@ class ExecutionEvidenceApiIT {
             .require("deferred-control-input", event.eventId().toString(), ServiceEvent.class)
             .body());
   }
+
+  @org.springframework.test.context.bean.override.mockito.MockitoBean ServiceHttp owners;
+
+  @Test
+  void preparesOnlyOwnerBoundSourcesAndReplaysPersistedArtifact() {
+    var source = CommandCompilerTest.fixture();
+    org.mockito.Mockito.when(
+            owners.post(
+                org.mockito.ArgumentMatchers.eq("planning"),
+                org.mockito.ArgumentMatchers.eq("/internal/planning/schedules/query"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(
+                    msc.domain.planning.MissionSchedule.Snapshot.class)))
+        .thenReturn(source.schedule());
+    org.mockito.Mockito.when(
+            owners.get(
+                "mission-definition",
+                "/internal/missions/sat",
+                msc.contracts.CatalogContracts.MissionProfile.class))
+        .thenReturn(source.mission());
+    org.mockito.Mockito.when(
+            owners.get(
+                "mission-definition",
+                "/internal/simulation-time-correlations/sat/versions/2",
+                com.fasterxml.jackson.databind.JsonNode.class))
+        .thenReturn(json.tree(source.correlation()));
+    org.mockito.Mockito.when(
+            owners.get(
+                "mission-definition",
+                "/internal/catalog/image/versions/1",
+                msc.contracts.CatalogContracts.CatalogEntry.class))
+        .thenReturn(source.catalogsByActivity().get("activity-0"));
+    var request =
+        new CommandPreparationApi.Prepare(
+            new msc.domain.shared.Ids.CommandLoadId(UUID.randomUUID().toString()),
+            source.schedule().key(),
+            2,
+            2,
+            Map.of(
+                "activity-0",
+                new msc.contracts.MissionCatalogBindingContracts.CatalogReference("image", 1),
+                "activity-1",
+                new msc.contracts.MissionCatalogBindingContracts.CatalogReference("image", 1)),
+            source.parametersByActivity(),
+            source.deadline());
+    var headers = new org.springframework.http.HttpHeaders();
+    headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", UUID.randomUUID().toString());
+    var body = new org.springframework.http.HttpEntity<>(request, headers);
+    assertEquals(
+        403,
+        client
+            .withBasicAuth("requester", PASSWORD)
+            .postForEntity("/api/command-loads/prepare", body, String.class)
+            .getStatusCode()
+            .value());
+    var response =
+        client
+            .withBasicAuth("operator1", PASSWORD)
+            .postForEntity(
+                "/api/command-loads/prepare", body, com.fasterxml.jackson.databind.JsonNode.class);
+    assertEquals(200, response.getStatusCode().value());
+    var prepared = json.convert(response.getBody().get("body"), CommandCompiler.Prepared.class);
+    assertTrue(prepared.load().authorizationEvidenceReference().isEmpty());
+    org.mockito.Mockito.reset(owners);
+    assertEquals(
+        response.getBody(),
+        client
+            .withBasicAuth("operator1", PASSWORD)
+            .postForEntity(
+                "/api/command-loads/prepare", body, com.fasterxml.jackson.databind.JsonNode.class)
+            .getBody());
+    org.mockito.Mockito.verifyNoInteractions(owners);
+    assertEquals(1, store.history("prepared-command-load", request.id().value()).size());
+    assertEquals(
+        prepared, new CommandPreparationApi(store, owners, json).read(request.id().value()).body());
+  }
+
+  @Test
+  void missingOwnerScheduleIs404NotPreparedArtifact() {
+    var s = CommandCompilerTest.fixture();
+    org.mockito.Mockito.when(
+            owners.post(
+                org.mockito.ArgumentMatchers.eq("planning"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(
+                    msc.domain.planning.MissionSchedule.Snapshot.class)))
+        .thenThrow(
+            org.springframework.web.client.HttpClientErrorException.create(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "missing",
+                new org.springframework.http.HttpHeaders(),
+                new byte[0],
+                java.nio.charset.StandardCharsets.UTF_8));
+    var id = new msc.domain.shared.Ids.CommandLoadId(UUID.randomUUID().toString());
+    var request =
+        new CommandPreparationApi.Prepare(
+            id,
+            s.schedule().key(),
+            2,
+            2,
+            Map.of(
+                "activity-0",
+                new msc.contracts.MissionCatalogBindingContracts.CatalogReference("image", 1)),
+            Map.of("activity-0", Map.of("exposure", "3")),
+            s.deadline());
+    var headers = new org.springframework.http.HttpHeaders();
+    headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", UUID.randomUUID().toString());
+    assertEquals(
+        404,
+        client
+            .withBasicAuth("operator1", PASSWORD)
+            .postForEntity(
+                "/api/command-loads/prepare",
+                new org.springframework.http.HttpEntity<>(request, headers),
+                String.class)
+            .getStatusCode()
+            .value());
+    assertTrue(
+        store.find("prepared-command-load", id.value(), CommandCompiler.Prepared.class).isEmpty());
+  }
 }
