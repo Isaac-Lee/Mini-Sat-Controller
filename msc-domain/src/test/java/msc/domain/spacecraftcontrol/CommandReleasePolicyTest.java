@@ -22,6 +22,19 @@ class CommandReleasePolicyTest {
   Context ready() { return context(Safety.CLEAR,ResourceValidation.Status.VALIDATED,Optional.of(AuthorityPolicy.Requirement.AUTO_ALLOWED),List.of()); }
   Approval approval(String actor) { return new Approval(Binding.of(load),ApprovalKind.HUMAN,actor,MissionInstant.tai(0),MissionInstant.tai(18),false); }
   @Test void permitsOnlyCompletePositiveEvidence() { assertTrue(policy.evaluate(load,ready(),MissionInstant.tai(10)).allowed()); }
+  @Test void mixedRequirementsCannotDowngradePolicyOrHumanApproval() {
+    var required=Set.of(AuthorityPolicy.Requirement.AUTO_ALLOWED,
+        AuthorityPolicy.Requirement.POLICY_APPROVAL, AuthorityPolicy.Requirement.TWO_PERSON_APPROVAL);
+    var binding=Binding.of(load); var now=MissionInstant.tai(10);
+    var human=List.of(approval("a"),approval("b"));
+    assertEquals(Set.of(Reason.APPROVAL_MISSING), CommandReleasePolicy.approvalReasons(binding,required,human,now));
+    var policyApproval=new Approval(binding,ApprovalKind.POLICY,"policy-engine",MissionInstant.tai(0),MissionInstant.tai(18),false);
+    assertEquals(Set.of(Reason.APPROVAL_MISSING),CommandReleasePolicy.approvalReasons(binding,required,List.of(policyApproval),now));
+    assertTrue(CommandReleasePolicy.approvalReasons(binding,required,List.of(policyApproval,approval("a"),approval("b")),now).isEmpty());
+    assertEquals(Set.of(Reason.AUTHORITY_UNKNOWN),CommandReleasePolicy.approvalReasons(binding,Set.of(),human,now));
+    assertEquals(Set.of(Reason.AUTO_FORBIDDEN),CommandReleasePolicy.approvalReasons(binding,
+        Set.of(AuthorityPolicy.Requirement.AUTO_ALLOWED,AuthorityPolicy.Requirement.AUTO_FORBIDDEN),human,now));
+  }
   @Test void unknownOrFrozenSafetyBlocksRegardlessOfAutoAuthority() {
     for(var safety:List.of(Safety.UNKNOWN,Safety.FROZEN)) assertFalse(policy.evaluate(load,context(safety,ResourceValidation.Status.VALIDATED,Optional.of(AuthorityPolicy.Requirement.AUTO_ALLOWED),List.of()),MissionInstant.tai(10)).allowed());
   }

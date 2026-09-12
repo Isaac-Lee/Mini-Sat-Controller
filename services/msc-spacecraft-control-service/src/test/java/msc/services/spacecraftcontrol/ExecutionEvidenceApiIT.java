@@ -251,6 +251,8 @@ class ExecutionEvidenceApiIT {
     assertEquals(json.fingerprint(first), json.fingerprint(api.grant(id, grant, "grant-one", one)));
     api.grant(id, grant, "grant-two", two);
     assertEquals(2, api.read(id).size());
+    var check = new CommandCatalogApprovalApi(store, json, () -> MissionInstant.tai(990));
+    assertTrue(check.check(id).reasons().isEmpty());
     var approval = store.require(CommandApprovalApi.kind(id), "operator1",
         msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body();
     assertEquals(msc.domain.spacecraftcontrol.CommandReleasePolicy.Binding.of(prepared.load()), approval.binding());
@@ -267,7 +269,12 @@ class ExecutionEvidenceApiIT {
         msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body().revoked());
     assertFalse(store.require(CommandApprovalApi.kind(id), "operator2",
         msc.domain.spacecraftcontrol.CommandReleasePolicy.Approval.class).body().revoked());
+    api.revoke(id, new CommandApprovalApi.Revoke(1), "revoke-two", two);
+    assertEquals(Set.of(msc.domain.spacecraftcontrol.CommandReleasePolicy.Reason.APPROVAL_MISSING), check.check(id).reasons());
     api.grant(id, new CommandApprovalApi.Grant(prepared.load().checksum(), MissionInstant.tai(999), 2), "renew", one);
+    assertTrue(check.check(id).reasons().isEmpty());
+    assertTrue(new CommandCatalogApprovalApi(store, json, () -> MissionInstant.tai(999))
+        .check(id).reasons().contains(msc.domain.spacecraftcontrol.CommandReleasePolicy.Reason.APPROVAL_MISSING));
     assertEquals(3, store.history(CommandApprovalApi.kind(id), "operator1").size());
     assertTrue(store.require("prepared-command-load", id, CommandCompiler.Prepared.class)
         .body().load().authorizationEvidenceReference().isEmpty());

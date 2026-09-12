@@ -63,17 +63,33 @@ public final class CommandReleasePolicy {
     if(context.safety()==Safety.FROZEN) reasons.add(Reason.SAFETY_FROZEN);
     if(context.safety()==Safety.UNKNOWN) reasons.add(Reason.SAFETY_UNKNOWN);
     if(context.authority().isEmpty()) reasons.add(Reason.AUTHORITY_UNKNOWN);
-    else {
-      var approvals=context.approvals().stream().filter(a -> a.applies(binding,now)).toList();
-      long humans=approvals.stream().filter(a -> a.kind()==ApprovalKind.HUMAN).map(Approval::actorId).distinct().count();
-      switch(context.authority().get()) {
-        case AUTO_ALLOWED -> { }
-        case AUTO_FORBIDDEN -> reasons.add(Reason.AUTO_FORBIDDEN);
-        case POLICY_APPROVAL -> { if(approvals.stream().noneMatch(a -> a.kind()==ApprovalKind.POLICY)) reasons.add(Reason.APPROVAL_MISSING); }
-        case HUMAN_APPROVAL -> { if(humans<1) reasons.add(Reason.APPROVAL_MISSING); }
-        case TWO_PERSON_APPROVAL -> { if(humans<2) reasons.add(Reason.APPROVAL_MISSING); }
-      }
-    }
+    else reasons.addAll(approvalReasons(binding, Set.of(context.authority().get()), context.approvals(), now));
     return new Decision(reasons,context.evidenceReference());
   }
+  /** All requirements apply together; policy approval and human approval are incomparable. */
+  public static Set<Reason> approvalReasons(Binding binding,
+      Set<AuthorityPolicy.Requirement> requirements, List<Approval> supplied, MissionInstant now) {
+    Objects.requireNonNull(binding);
+    Objects.requireNonNull(now).requireTai();
+    requirements = Set.copyOf(requirements);
+    var reasons = EnumSet.noneOf(Reason.class);
+    if (requirements.isEmpty()) reasons.add(Reason.AUTHORITY_UNKNOWN);
+    var approvals = List.copyOf(supplied).stream().filter(a -> a.applies(binding, now)).toList();
+    long humans = approvals.stream().filter(a -> a.kind() == ApprovalKind.HUMAN)
+        .map(Approval::actorId).distinct().count();
+    for (var requirement : requirements) {
+      switch (requirement) {
+        case AUTO_ALLOWED -> { }
+        case AUTO_FORBIDDEN -> reasons.add(Reason.AUTO_FORBIDDEN);
+        case POLICY_APPROVAL -> {
+          if (approvals.stream().noneMatch(a -> a.kind() == ApprovalKind.POLICY))
+            reasons.add(Reason.APPROVAL_MISSING);
+        }
+        case HUMAN_APPROVAL -> { if (humans < 1) reasons.add(Reason.APPROVAL_MISSING); }
+        case TWO_PERSON_APPROVAL -> { if (humans < 2) reasons.add(Reason.APPROVAL_MISSING); }
+      }
+    }
+    return orderedEnumSet(Reason.class, reasons);
+  }
+
 }
