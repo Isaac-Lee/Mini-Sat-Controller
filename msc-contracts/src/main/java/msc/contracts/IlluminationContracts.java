@@ -19,7 +19,7 @@ import msc.domain.time.TimeWindow;
  * available in this build environment; treat the note as an uncharacterised, assumed simulation
  * margin, never a mission-qualified bound. See {@code docs/backend/illumination.md}.
  *
- * <p><b>Target illumination is evaluated at five sampled points only</b> (AOI centre plus its
+ * <p><b>TargetIlluminationResult evaluates five sampled points only</b> (AOI centre plus its
  * four corners), never proven over the continuous AOI area. A dark patch between the samples is
  * undetectable, so the intersection of all five points' illuminated windows is an
  * OVER-approximation of full-AOI illumination (a superset of the true full-AOI-illuminated
@@ -110,6 +110,37 @@ public final class IlluminationContracts {
           || minimumSunElevationDegrees < -90
           || minimumSunElevationDegrees >= 90)
         throw new IllegalArgumentException("Invalid minimum sun elevation bound");
+    }
+  }
+
+  public enum RectangularIlluminationScope {
+    SPATIAL_BOUND_NUMERICAL_EVENT_SEARCH
+  }
+
+  /** Spatial lower bound searched numerically in time; no temporal completeness certificate. */
+  public record RectangularIlluminationResult(
+      String spacecraftId, String solarModel, String solarModelAccuracyNote,
+      String referenceDigest, TargetIlluminationQuery query,
+      double rootToleranceSeconds, double maximumCheckSeconds,
+      List<TimeWindow> illuminatedWindows, RectangularIlluminationScope scope) {
+    public RectangularIlluminationResult {
+      text(spacecraftId);
+      text(solarModel);
+      text(solarModelAccuracyNote);
+      text(referenceDigest);
+      Objects.requireNonNull(query);
+      Objects.requireNonNull(scope);
+      if (!Double.isFinite(rootToleranceSeconds) || rootToleranceSeconds <= 0
+          || !Double.isFinite(maximumCheckSeconds) || maximumCheckSeconds <= 0)
+        throw new IllegalArgumentException("Positive finite search tolerances required");
+      illuminatedWindows = List.copyOf(illuminatedWindows);
+      TimeWindow previous = null;
+      for (var window : illuminatedWindows) {
+        if (!query.horizon().contains(window)
+            || (previous != null && previous.end().compareTo(window.start()) > 0))
+          throw new IllegalArgumentException("Ordered nonoverlapping windows within horizon required");
+        previous = window;
+      }
     }
   }
 

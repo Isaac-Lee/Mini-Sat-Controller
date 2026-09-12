@@ -115,6 +115,40 @@ public class IlluminationApi {
     }
   }
 
+  @PostMapping({"/api/rectangular-illumination", "/internal/rectangular-illumination"})
+  @PreAuthorize("hasAnyRole('OPERATOR','SERVICE')")
+  public JsonNode rectangularIllumination(
+      @RequestBody TargetIlluminationRequest request,
+      @RequestHeader("Idempotency-Key") String key, Authentication actor) {
+    String scope = "rectangular-illumination:" + actor.getName();
+    var prior = store.replay(scope, key, request);
+    if (prior.isPresent()) return prior.get();
+    var area = request.query().aoi();
+    var computed = new OrekitIlluminationPredictor(references).rectangularIllumination(
+        request.query().horizon(), new msc.orbit.RectangularSolarElevation.Rectangle(
+            area.westLongitudeDegrees(), area.eastLongitudeDegrees(),
+            area.southLatitudeDegrees(), area.northLatitudeDegrees(), area.altitudeMeters()),
+        request.query().minimumSunElevationDegrees());
+    var result = new RectangularIlluminationResult(
+        request.spacecraftId(), OrekitIlluminationPredictor.SOLAR_MODEL,
+        OrekitIlluminationPredictor.SOLAR_MODEL_ACCURACY_NOTE,
+        references.digest(), request.query(), computed.tolerances().rootToleranceSeconds(),
+        computed.tolerances().maximumCheckSeconds(), computed.illuminatedWindows(),
+        RectangularIlluminationScope.SPATIAL_BOUND_NUMERICAL_EVENT_SEARCH);
+    return store.idempotent(scope, key, request, () -> {
+      String id = UUID.randomUUID().toString();
+      var saved = store.create("rectangular-illumination", id, result);
+      store.event("RectangularIlluminationPredicted", id, saved.version(),
+          UUID.randomUUID(), null, result);
+      return saved;
+    });
+  }
+
+  @GetMapping({"/api/rectangular-illumination/{id}", "/internal/rectangular-illumination/{id}"})
+  public RectangularIlluminationResult rectangularIlluminationResult(@PathVariable String id) {
+    return store.require("rectangular-illumination", id, RectangularIlluminationResult.class).body();
+  }
+
   @PostMapping({"/api/spacecraft-eclipse", "/internal/spacecraft-eclipse"})
   @PreAuthorize("hasAnyRole('OPERATOR','SERVICE')")
   public JsonNode spacecraftEclipse(

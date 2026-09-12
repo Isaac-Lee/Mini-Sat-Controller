@@ -74,6 +74,32 @@ class SpacecraftEclipseApiIT {
     api = new IlluminationApi(store, frames);
   }
 
+  @Test
+  void rectangularPredictionPersistsItsScopeAndReplaysWithoutAnotherEvent() {
+    var start = frames.fromUtc("2026-09-01T12:00:00");
+    var query = new msc.contracts.IlluminationContracts.TargetIlluminationQuery(
+        new msc.contracts.IlluminationContracts.Aoi("rectangle", -10, 10, -10, 10, 0),
+        new TimeWindow(start, start.plus(new MissionDuration(3600_000_000_000L))), 10);
+    var request = new IlluminationApi.TargetIlluminationRequest("norad-63229", query);
+    var first = api.rectangularIllumination(request, "rectangle-key", actor);
+    String id = first.path("id").asText();
+    var result = api.rectangularIlluminationResult(id);
+    assertEquals(query, result.query());
+    assertEquals(frames.digest(), result.referenceDigest());
+    assertEquals(msc.contracts.IlluminationContracts.RectangularIlluminationScope
+        .SPATIAL_BOUND_NUMERICAL_EVENT_SEARCH, result.scope());
+    assertFalse(result.illuminatedWindows().isEmpty());
+    // A fresh controller with no reference archive can replay persisted output without compute.
+    var replay = new IlluminationApi(store, null).rectangularIllumination(request, "rectangle-key", actor);
+    assertEquals(json.fingerprint(first), json.fingerprint(replay));
+    assertEquals(1, store.list("rectangular-illumination", 100).size());
+    var ds = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+    assertEquals(1, new JdbcTemplate(ds).queryForObject(
+        "SELECT count(*) FROM outbox WHERE event_type='RectangularIlluminationPredicted'", Integer.class));
+    assertThrows(ApiException.class, () -> api.rectangularIllumination(
+        new IlluminationApi.TargetIlluminationRequest("different-craft", query), "rectangle-key", actor));
+  }
+
   /** Same SPACEEYE-T1 / NORAD 63229 fixture already pinned in {@code GeneralPerturbationsIT}. */
   static MeanElements spaceeye(int noradId) {
     return new MeanElements(

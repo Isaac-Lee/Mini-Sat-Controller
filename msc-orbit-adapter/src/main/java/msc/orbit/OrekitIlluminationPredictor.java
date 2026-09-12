@@ -99,6 +99,34 @@ public final class OrekitIlluminationPredictor {
   public record PointIllumination(
       List<TimeWindow> illuminatedWindows, ToleranceSettings tolerances) {}
 
+  /** Numerical event search of the continuous spatial bound, not a temporal certificate. */
+  public PointIllumination rectangularIllumination(
+      TimeWindow horizon, RectangularSolarElevation.Rectangle area,
+      double minimumSunElevationDegrees) {
+    if (!Double.isFinite(minimumSunElevationDegrees)
+        || minimumSunElevationDegrees < -90 || minimumSunElevationDegrees >= 90)
+      throw new IllegalArgumentException("Invalid minimum solar elevation");
+    java.util.Objects.requireNonNull(area);
+    var start = time.date(horizon.start());
+    var end = time.date(horizon.end());
+    checkHorizon(start, end);
+    var earth = references.earth();
+    var sun = new AnalyticalSolarPositionProvider(references.context());
+    double threshold = Math.toRadians(minimumSunElevationDegrees);
+    // The function depends only on date; the clock orbit contributes no position or attitude.
+    // Negative g means the spatial lower bound exceeds the requested threshold.
+    var detector = new org.orekit.propagation.events.FunctionalDetector()
+        .withFunction(state -> threshold - RectangularSolarElevation.at(
+            area, earth, sun, state.getDate()).lowerElevationRadians())
+        .withMaxCheck(ILLUMINATION_MAX_CHECK_SECONDS)
+        .withThreshold(ROOT_TOLERANCE_SECONDS)
+        .withMaxIter(MAX_ITERATIONS)
+        .withHandler(new ContinueOnEvent());
+    return new PointIllumination(
+        negativeGWindows(detector, clockPropagator(start), start, end, horizon),
+        new ToleranceSettings(ROOT_TOLERANCE_SECONDS, ILLUMINATION_MAX_CHECK_SECONDS));
+  }
+
   public record SpacecraftEclipse(
       List<TimeWindow> sunlitWindows,
       List<TimeWindow> eclipseWindows,
