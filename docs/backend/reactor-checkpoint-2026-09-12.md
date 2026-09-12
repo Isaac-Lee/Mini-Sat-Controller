@@ -1,5 +1,29 @@
 # Backend regression checkpoint — 2026-09-12
 
+## Acquisition, Product and derived TLE checkpoint
+
+The full reactor passed at code baseline
+`a7e34c5f10dd79feacb5087e189e3c109b2a6ec8`: **400 test executions across 84 classes**,
+with zero failures, errors or skipped tests. The run finished at 16:35:03 KST on
+2026-09-12 in 15 minutes 4 seconds. All 20 reactor modules succeeded. The only
+subsequent committed change during this run was documentation (`43adfc7`); compiled
+BE sources were unchanged. Concurrent Claude drafts remained outside reactor source paths.
+
+This run used the Java 21, Testcontainers, pinned Orekit archive and
+`-Dtest=*Test,*IT -Dsurefire.failIfNoSpecifiedTests=false test` configuration below.
+Counts come from individual class results, including inherited tests, counted once in
+`/private/tmp/msc-be-reactor-product-tle.log`. Local machine evidence with the log
+SHA-256 and per-class results is `.local/be-reactor-product-tle.json`.
+
+This adds Acquisition source import and automatic manifest accounting, Product source
+packages and automatic work queues, authenticated byte/index downloads, diagnostic PNG
+previews, and derived traditional TLE export to the prior regression checkpoint.
+Deployed behavior is separately documented in the corresponding feature verification
+sections. A successful reactor does not prove complete AOI/attitude feasibility,
+production schedule commitment, final release/Space Link dispatch, request-bound
+quality fulfillment or the complete operational simulator flow. Those remain required
+under the [accepted completion scope](simulation-completion-scope.md).
+
 ## Automatic illumination checkpoint
 
 The full reactor passed at source commit
