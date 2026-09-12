@@ -19,6 +19,7 @@
     <module>services/msc-ground-operations-service</module>
     <module>services/msc-simulator-service</module>
     <module>services/msc-spacecraft-control-service</module>
+    <module>services/msc-acquisition-service</module>
     <module>services/msc-monitoring-service</module>
     <module>services/msc-anomaly-service</module>
     <module>services/msc-planning-service</module>

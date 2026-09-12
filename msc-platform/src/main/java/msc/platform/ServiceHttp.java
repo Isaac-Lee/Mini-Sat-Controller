@@ -81,6 +81,37 @@ public final class ServiceHttp {
         client.get().uri(url(service, path)).headers(this::credentials).retrieve().body(type));
   }
 
+  /** Streams a bounded owner response; callers own the destination and verify content hashes. */
+  public long download(
+      String service, String path, java.io.OutputStream destination, long maximumBytes) {
+    if (maximumBytes < 1 || maximumBytes > 64L * 1024 * 1024)
+      throw new IllegalArgumentException("Download limit must be 1..67108864 bytes");
+    return client
+        .get()
+        .uri(url(service, path))
+        .headers(this::credentials)
+        .exchange(
+            (request, response) -> {
+              if (response.getStatusCode().value() != 200)
+                throw new ApiException(
+                    HttpStatus.BAD_GATEWAY, "OWNER_DOWNLOAD_FAILED", "Owner content unavailable");
+              if (response.getHeaders().getContentLength() > maximumBytes)
+                throw ApiException.invalid("Owner content exceeds download limit");
+              long total = 0;
+              try (var input = response.getBody()) {
+                byte[] buffer = new byte[65536];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                  total += count;
+                  if (total > maximumBytes)
+                    throw ApiException.invalid("Owner content exceeds download limit");
+                  destination.write(buffer, 0, count);
+                }
+              }
+              return total;
+            });
+  }
+
   public <T> T post(
       String service, String path, Object body, String idempotencyKey, Class<T> type) {
     return Objects.requireNonNull(

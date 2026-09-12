@@ -186,6 +186,24 @@ public class SimulationDownlinkReceptionApi {
     return new Result(Belief.OBSERVED, "RECEIVED", Optional.of(receipt));
   }
 
+  @GetMapping("/internal/simulation/downlinks/{id}/received-content")
+  @PreAuthorize("hasRole('SERVICE')")
+  public org.springframework.http.ResponseEntity<
+          org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody>
+      content(@PathVariable String id) {
+    var receipt = read(id).body();
+    return org.springframework.http.ResponseEntity.ok()
+        .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+        .contentLength(receipt.byteCount())
+        .header("X-MSC-Environment", "SIMULATION")
+        .body(
+            output -> {
+              try (var input = objects.read(receipt.objectReference())) {
+                input.transferTo(output);
+              }
+            });
+  }
+
   @GetMapping("/internal/simulation/downlinks/{id}/receipt")
   @PreAuthorize("hasRole('SERVICE')")
   public StateStore.State<Receipt> read(@PathVariable String id) {
