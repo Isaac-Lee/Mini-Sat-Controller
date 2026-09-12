@@ -87,9 +87,10 @@ an independent Space Link service remain unfinished. [Control evidence](control-
 receives simulator observations but still identifies unbound simulation evidence explicitly.
 
 The spacecraft simulator has pinned scenarios, a durable command/effect ledger and reception
-faults/reconciliation. Ground Operations and its station simulator have durable allocation,
-booking and reconciliation. Complete battery/orbit/attitude/maneuver evolution, payload bytes,
-uplink/downlink delivery, acquisition, L0/quicklook and fulfillment remain unfinished.
+faults/reconciliation. [Onboard payload materialization](simulation-payload.md) now writes
+command-bound synthetic raw bytes to S3 with exact size/hash and persistent retry. Ground Operations and its station simulator have durable allocation,
+booking and reconciliation. Complete battery/orbit/attitude/maneuver evolution,
+uplink/downlink payload delivery, acquisition, L0/quicklook and fulfillment remain unfinished.
 Monitoring and Anomaly retain source-bound telemetry, freshness, latched safety incidents and
 approved recovery. Their checks still need integration into final release orchestration.
 

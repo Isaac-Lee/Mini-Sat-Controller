@@ -47,6 +47,7 @@ class SimulationScenarioApiIT {
     r.add("spring.rabbitmq.port", rabbit::getAmqpPort);
     r.add("spring.rabbitmq.username", rabbit::getAdminUsername);
     r.add("spring.rabbitmq.password", rabbit::getAdminPassword);
+    r.add("msc.s3.enabled", () -> false);
     r.add("msc.security.mode", () -> "local");
     for (var role : List.of("admin", "operator", "requester", "service"))
       r.add("msc.security.local." + role + "-password", () -> PASSWORD);

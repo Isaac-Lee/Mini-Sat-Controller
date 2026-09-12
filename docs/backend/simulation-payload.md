@@ -30,7 +30,7 @@ reception: materialization is an onboard fact. Downlink delivery, gap accounting
 product generation and fulfillment are still separate unfinished steps. Modeled DOWNLINK
 reservoir drain does not delete these retained source objects or prove their reception.
 
-The worker and schema are source changes pending deployment. Tests use real PostgreSQL and a
+The focused tests use real PostgreSQL and a
 mock object adapter that consumes the complete stream; they do not establish actual MinIO
 write/read or deployed worker execution. The existing scenario API integration test checks
 intent creation alongside IMAGE effects and rollback on a failed scenario update.
@@ -45,3 +45,27 @@ exact decimal byte count/hash, no DB transaction during upload, durable completi
 lease fencing, storage failure, metadata rollback after upload with identical retry bytes,
 and rejection of unsupported sizes. The content streaming endpoint requires deployed S3
 verification in addition to these checks.
+
+
+## Deployed verification
+
+On 2026-09-12, Simulator image `msc-simulator:3a6be379baa08daa391085ac` rolled out
+successfully. The service uses its `msc-simulator` bucket and receives local S3 credentials
+through its own runtime Secret. The runtime preparation script now includes Simulator in S3
+credential provisioning; `MSC_SIMULATION_PAYLOAD_ENABLED=false` explicitly disables the
+materializer. The worker ensures its bucket outside the database transaction.
+
+The initial deployment exposed a missing Simulator S3 configuration. After adding the service
+configuration and Secret fields, the worker recovered the already-recorded IMAGE intent without
+re-executing the command. A transient localhost forward interruption during rollout recovered
+through the existing forward supervisor; a subsequent read verification succeeded.
+
+`scripts/verify-simulation-command.py` passed its six execution checks, followed by six
+`scripts/verify-simulation-payload.py` checks against real MinIO. Scenario
+`60e69d60-8fea-4664-813e-5e902035425f` produced exactly 1,000,000 bytes. The streamed bytes
+matched SHA-256 `2eb8a756a9a5b1f8a93e152ba4456ad44d8679c8a315efcbc9a39c14b319829a`,
+the manifest and the content-derived S3 key. Requester metadata/content access was rejected.
+All ten Deployments were ready afterward, with Planning at two replicas.
+Evidence is `.local/simulation-payload-verification.json` and
+`/private/tmp/msc-simulation-payload-live.log`. This proves onboard synthetic materialization
+and internal retrieval, not downlink delivery or acquisition completion.

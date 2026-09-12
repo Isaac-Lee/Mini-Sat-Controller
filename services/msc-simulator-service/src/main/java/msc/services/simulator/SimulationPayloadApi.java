@@ -67,6 +67,7 @@ public class SimulationPayloadApi {
       long bytes = SimulationPayload.bytes(source);
       String sourceHash = json.fingerprint(source);
       var digest = MessageDigest.getInstance("SHA-256");
+      objects.ensureBucket();
       String reference;
       try (var content =
           new DigestInputStream(SimulationPayload.samples(sourceHash, bytes), digest)) {
