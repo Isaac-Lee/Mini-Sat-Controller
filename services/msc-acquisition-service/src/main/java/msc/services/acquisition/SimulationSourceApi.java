@@ -49,14 +49,27 @@ public class SimulationSourceApi {
       @RequestHeader("Idempotency-Key") String key,
       Authentication actor)
       throws IOException {
-    String scope = "simulation-source-import:" + actor.getName();
+    return acquireForActor(request, key, actor.getName(), null);
+  }
+
+  JsonNode acquireForActor(Import request, String key, String actor, String expectedReceiptHash)
+      throws IOException {
+    String scope = "simulation-source-import:" + actor;
     var replay = store.replay(scope, key, request);
-    if (replay.isPresent()) return replay.get();
+    if (replay.isPresent()) {
+      requireReceiptHash(
+          expectedReceiptHash, replay.get().path("body").path("receiptSha256").asText());
+      return replay.get();
+    }
     var prior = store.find("simulation-acquisition-source", request.receiptId(), Source.class);
-    if (prior.isPresent()) return store.idempotent(scope, key, request, () -> prior.get());
+    if (prior.isPresent()) {
+      requireReceiptHash(expectedReceiptHash, prior.get().body().receiptSha256());
+      return store.idempotent(scope, key, request, () -> prior.get());
+    }
     String path = "/internal/simulation/downlinks/" + request.receiptId();
     var receipt = http.get("simulator", path + "/receipt", JsonNode.class);
     long expected = validate(request, receipt);
+    requireReceiptHash(expectedReceiptHash, json.fingerprint(receipt));
     var temporary = Files.createTempFile("msc-acquisition-source-", ".part");
     try {
       var digest = digest();
@@ -129,6 +142,11 @@ public class SimulationSourceApi {
       throw ApiException.invalid("Invalid owner receipt identity/scope/size/hash");
     json.convert(body.path("receivedAt"), MissionInstant.class).requireTai();
     return size.asLong();
+  }
+
+  private static void requireReceiptHash(String expected, String actual) {
+    if (expected != null && !expected.equals(actual))
+      throw ApiException.conflict("Owner receipt differs from received event");
   }
 
   private static boolean positiveVersion(JsonNode value) {

@@ -38,7 +38,19 @@ These tests do not establish deployed Acquisition or real MinIO import.
 
 ## Remaining integration
 
-Automatic `SimulatedPayloadReceived` consumption, Kubernetes provisioning and deployed
-cross-service import verification remain to be connected. This source is a synthetic raw
+`SimulatedPayloadReceived` now routes through the transactional inbox into an owned
+PostgreSQL work queue. Event receipt hashes are pinned before any owner I/O. Duplicate
+events are deduplicated; conflicting evidence rolls back inbox acceptance. Workers claim
+with `FOR UPDATE SKIP LOCKED` and a five-minute lease, retry transient failures after
+30 seconds, and reject invalid evidence. Completion updates require the live lease token.
+An expired worker can at most publish the same immutable source via the idempotent import;
+it cannot overwrite a replacement worker status. Other routed inputs are retained for
+the still-pending operational flows. Work status is readable at
+`GET /api/acquisition/simulation-sources/{id}/work` (also `/internal`).
+
+`SimulationSourceWorkerTest` exercises inbox deduplication, durable retry, expired lease
+recovery, conflicting events, owner/event mismatch and retention of other inputs with
+real PostgreSQL. RabbitMQ delivery and Kubernetes provisioning/deployed cross-service
+import verification remain to be checked. This source is a synthetic raw
 byte stream, not qualified instrument imagery, L0, gap repair, quicklook, a product or
 Tasking fulfillment. Those stages remain part of the full backend goal.

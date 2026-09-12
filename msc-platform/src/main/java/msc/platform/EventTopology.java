@@ -50,7 +50,8 @@ public class EventTopology {
               List.of(
                   "ScheduleVersionCommitted",
                   "AcquisitionExecutionConfirmed",
-                  "DownlinkReceptionCompleted")),
+                  "DownlinkReceptionCompleted",
+                  "SimulatedPayloadReceived")),
           Map.entry("product", List.of("AcquisitionDataComplete")),
           Map.entry("reference-data", List.of("ObservationIntentReceived")),
           Map.entry("mission-projection", List.of("#")));
