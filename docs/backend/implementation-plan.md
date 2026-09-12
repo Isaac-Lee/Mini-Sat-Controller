@@ -173,3 +173,14 @@ tests and deployed HTTP checks passed with two Planning replicas ready; see
 [reassessment evidence](planning-resource-reassessment.md). Results are immutable evidence,
 not reservations or commit permits. Production commitment must reuse the calculation
 inside its own publication transaction and still satisfy the remaining feasibility gates.
+
+
+### Owned sampled camera evaluation checkpoint (2026-09-12)
+
+Flight Dynamics now computes sampled footprints from an owned pointing result and exact camera/
+Planning model versions, retaining the model envelopes and bulk evidence in its S3 bucket.
+Sixteen PostgreSQL API tests and six numerical tests passed, followed by deployed HTTP/MinIO
+verification with independent ray-plane arithmetic over 12 samples. See
+[camera evaluation evidence](camera-footprint-evaluation.md). Planning must next bind these
+sources to its run and establish exposure-duration/attitude evidence before approving coverage;
+actual combined feasibility, schedule commitment and command release remain incomplete.
