@@ -105,3 +105,13 @@ The [regression checkpoint](reactor-checkpoint-2026-09-12.md) records full-react
 its exact source scope. Feature documents distinguish unit/DB tests from actual deployed
 checks. Passing those checks does not complete the operational acceptance above; every
 remaining work package stays active.
+
+
+### Acquisition deployed source checkpoint (2026-09-12)
+
+Simulator receipt events now enqueue immutable, hash-pinned Acquisition source imports
+through RabbitMQ and a PostgreSQL work queue. The independent Acquisition Deployment
+stores verified bytes in `msc-acquisition`; see [source evidence](acquisition-simulation-source.md).
+Real command-to-downlink-to-source flows passed with one and two Acquisition replicas.
+Gap accounting, L0, quicklook, product quality, projections and fulfillment remain open;
+this checkpoint does not close the complete acquisition/product workstream.
