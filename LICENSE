@@ -1,0 +1,105 @@
+Mini-Sat-Controller Educational Noncommercial License
+Version 1.0, 2026-09-13
+
+Copyright (c) 2026 Isaac-Lee and the respective contributing copyright holders.
+Original project: Mini-Sat-Controller
+Original author: Isaac-Lee (https://github.com/Isaac-Lee)
+Project URL: https://github.com/Isaac-Lee/Mini-Sat-Controller
+
+This is a custom, source-available license. It is not an OSI-approved
+open-source license or a Creative Commons license.
+
+1. Scope and definitions
+
+"Software" means the original source code, documentation, and other materials
+in this repository that the applicable copyright holders make available under
+this License, including their copyrightable portions in modified versions.
+Separately licensed third-party materials are excluded (see Section 6).
+
+"Educational Purpose" means personal study, learning, teaching, classroom
+demonstrations, or coursework, solely to acquire or convey knowledge. Research
+is permitted only insofar as it is part of such an educational activity.
+Production operation of a satellite, ground station, or other operational
+system is not an Educational Purpose, even when operated by a school or a
+nonprofit organization. Educational simulations and laboratory exercises are
+permitted subject to the other terms of this License.
+
+"Commercial Use" means use primarily intended for or directed toward
+commercial advantage or monetary compensation. This includes selling,
+licensing for a fee, paid hosting, paid training or courses using the Software,
+consulting, incorporation into a commercial product or service, and internal
+business operations or training for commercial advantage. Educational intent
+does not make a Commercial Use permissible. An organization's nonprofit or
+educational status does not by itself make its use noncommercial.
+
+2. Limited permission
+
+Subject to all terms of this License, each applicable copyright holder grants
+you a worldwide, nonexclusive, royalty-free copyright license to use, run,
+study, copy, modify, and distribute the Software in source or compiled form,
+solely for noncommercial Educational Purposes.
+
+Commercial Use and any use outside Educational Purposes are not licensed.
+Such use requires separate written permission from the relevant copyright
+holders. All rights not expressly granted are reserved. This License grants
+no trademark rights or right to claim endorsement by the original author.
+
+3. Mandatory attribution and notices
+
+You must preserve existing copyright, attribution, license, and disclaimer
+notices in copies of the Software and its modifications. Every distribution
+of source code or compiled Software must include this entire LICENSE file.
+
+When distributing, publicly demonstrating, or making the Software or a
+modified version available to others, you must provide the following credit
+in a reasonably prominent location in the accompanying README, documentation,
+About/credits screen, or educational materials accessible to those recipients:
+
+    Based on Mini-Sat-Controller by Isaac-Lee.
+    https://github.com/Isaac-Lee/Mini-Sat-Controller
+    Licensed under the Mini-Sat-Controller Educational Noncommercial License 1.0.
+
+Retain other contributors' supplied attribution notices. You must identify
+modified versions as modified, describe the changes, and identify who made
+them. Do not represent your modifications as the original author's work.
+
+4. Redistribution and modifications
+
+Redistribution is permitted only for noncommercial Educational Purposes and
+subject to Sections 2 and 3. The Software, including its copyrightable
+portions in modifications, remains subject to this License. You must not
+remove these restrictions or purport to grant recipients commercial or
+non-educational rights to those portions. Recipients receive their permission
+to those portions directly from the applicable copyright holders under this
+License. This does not require publication of private modifications or claim
+ownership of your original contributions.
+
+5. Termination
+
+Your rights under this License terminate automatically if you violate its
+terms. Upon termination you must stop exercising the rights granted by this
+License. Termination does not terminate the rights of recipients who remain
+in compliance. Reinstatement requires written permission from the relevant
+copyright holders.
+
+6. Third-party materials and other rights
+
+Dependencies, bundled third-party components, reference data, and other
+materials identified as separately licensed remain governed by their own
+terms. This License does not relicense them or impose these restrictions on
+their independent use. You are responsible for complying with those terms.
+
+Nothing in this License restricts uses permitted without permission under
+applicable law, including applicable copyright exceptions and limitations.
+This License does not revoke rights validly granted under a different license
+for a previously received version of the Software.
+
+7. Disclaimer and limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+THE COPYRIGHT HOLDERS SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE,
+WHETHER IN CONTRACT, TORT, OR OTHERWISE. NOTHING IN THIS SECTION EXCLUDES
+LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED.

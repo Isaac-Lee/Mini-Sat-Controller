@@ -1,5 +1,30 @@
 # Mini-Sat-Controller
 
+## License / 라이선스
+
+This project uses the custom [Mini-Sat-Controller Educational Noncommercial
+License 1.0](LICENSE). It is source-available with use restrictions, not an
+OSI-approved open-source license.
+
+- **Noncommercial educational use only:** personal learning, teaching,
+  coursework, and educational simulations are permitted.
+- **Modification is allowed**, with notices identifying the changes and their authors.
+- **Attribution is mandatory:** credit Mini-Sat-Controller and its original
+  author, **Isaac-Lee**, with the [original repository link](https://github.com/Isaac-Lee/Mini-Sat-Controller).
+  Preserve existing contributor notices and include the full license with distributions.
+- **Commercial use and non-educational use are prohibited** without separate
+  written permission. Paid courses/training, commercial services, internal
+  business use, and production satellite operations are not permitted by this license.
+- Redistributions and modifications retain these restrictions on the original
+  Software. Separately licensed dependencies and data retain their own terms.
+
+**비상업적 교육 목적으로만 이용할 수 있으며 코드 수정은 허용됩니다.**
+원작자 **Isaac-Lee**, 프로젝트명과 원본 저장소 링크를 표기하고, 저작권·라이선스
+고지를 보존해야 합니다. 재배포 시 LICENSE 전문을 포함하고 수정 사항과 수정자를
+표시해야 합니다. 상업적 이용(유료 강의·교육 포함)과 교육 외 목적의 이용은 별도
+서면 허가가 필요합니다. 제3자 코드·데이터에는 해당 자료의 라이선스가 적용됩니다.
+이 요약보다 [영문 LICENSE 전문](LICENSE)이 우선합니다.
+
 MSC is an intent-driven Earth Observation mission operations system. This repository
 contains the Java architecture foundation and an in-progress MSA backend. Independent
 mission-definition, Flight Dynamics, tasking, reference-data, ground-operations, Monitoring, Anomaly, Planning intake and station simulator services now exercise
