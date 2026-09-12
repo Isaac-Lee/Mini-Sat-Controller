@@ -153,3 +153,13 @@ tests passed; the deployed NORAD 63229 HTTP flow passed independent WGS84 geomet
 source preservation, role and idempotency checks. See [API evidence](required-target-pointing.md).
 This supplies geometry for the next explicit simulation camera/footprint model; AOI coverage,
 attitude feasibility, schedule commitment and release remain required and unfinished.
+
+
+### Published simulation camera model checkpoint (2026-09-12)
+
+Mission Definition now owns explicit camera half-angles, raster dimensions, synthetic stare
+orientation law and acceptance bounds, pinned to an exact simulation Planning model version.
+Ten real HTTP/DB tests and the deployed version/role/replay verification passed; see
+[camera model evidence](simulation-camera-model.md). The independent numerical projection
+helper also passed six tests. Owner-bound FD evaluation and Planning coverage integration
+remain unfinished; publishing the camera does not promote a feasibility gate.
