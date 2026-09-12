@@ -58,15 +58,8 @@ public final class SimulatorOperationEffects {
     if (before.storedMegabytes() > mission.storageCapacityMb()
         || before.propellantKilograms() > mission.propellantKg())
       throw new IllegalArgumentException("Initial reservoirs exceed pinned mission capacity");
-    var expected = profile.expected();
+    requireMatchingProfile(catalog, profile);
     var resources = catalog.resources();
-    if (!profile.catalog().catalogId().equals(catalog.id())
-        || profile.catalog().catalogVersion() != catalog.version()
-        || !profile.operation().name().equals(catalog.template().operation())
-        || Double.compare(expected.powerWatts(), resources.powerWatts()) != 0
-        || Double.compare(expected.generatedMegabytes(), resources.generatedMegabytes()) != 0
-        || Double.compare(expected.propellantKilograms(), resources.propellantKilograms()) != 0)
-      throw new IllegalArgumentException("Operation profile does not match pinned catalog");
     if (profile.operation() != Operation.IMAGE && profile.operation() != Operation.DOWNLINK)
       return rejected(Outcome.NOT_SUPPORTED, before, resources.powerWatts());
 
@@ -95,6 +88,20 @@ public final class SimulatorOperationEffects {
         actualDrain,
         resources.propellantKilograms(),
         resources.powerWatts());
+  }
+
+  static void requireMatchingProfile(CatalogEntry catalog, OperationResourceProfile profile) {
+    Objects.requireNonNull(catalog);
+    Objects.requireNonNull(profile);
+    var resources = catalog.resources();
+    var expected = profile.expected();
+    if (!profile.catalog().catalogId().equals(catalog.id())
+        || profile.catalog().catalogVersion() != catalog.version()
+        || !profile.operation().name().equals(catalog.template().operation())
+        || Double.compare(expected.powerWatts(), resources.powerWatts()) != 0
+        || Double.compare(expected.generatedMegabytes(), resources.generatedMegabytes()) != 0
+        || Double.compare(expected.propellantKilograms(), resources.propellantKilograms()) != 0)
+      throw new IllegalArgumentException("Operation profile does not match pinned catalog");
   }
 
   private static Result rejected(Outcome reason, Reservoirs before, double powerWatts) {

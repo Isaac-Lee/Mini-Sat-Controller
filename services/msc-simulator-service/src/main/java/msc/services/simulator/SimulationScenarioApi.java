@@ -99,12 +99,16 @@ public class SimulationScenarioApi {
         || !mission.missionDefinitionVersion().equals(profiles.body().missionDefinitionVersion())
         || !mission.timeCorrelationId().equals(correlation.body().timeCorrelationId()))
       throw ApiException.invalid("Simulation source bindings do not match the mission");
-    correlation
-        .body()
-        .tickToTai(
-            mission.timeCorrelationId(),
-            correlation.body().clockPartition(),
-            request.initialTick());
+    try {
+      correlation
+          .body()
+          .tickToTai(
+              mission.timeCorrelationId(),
+              correlation.body().clockPartition(),
+              request.initialTick());
+    } catch (ArithmeticException invalidTime) {
+      throw ApiException.invalid("Initial tick exceeds pinned clock arithmetic range");
+    }
     if (request.reservoirs().storedMegabytes() > mission.storageCapacityMb()
         || request.reservoirs().propellantKilograms() > mission.propellantKg())
       throw ApiException.invalid("Initial reservoirs exceed mission capacity");

@@ -224,4 +224,223 @@ class SimulationScenarioApiIT {
       assertTrue(store.find("simulation-scenario", good.id().toString(), Scenario.class).isEmpty());
     }
   }
+
+  private SimulationCommandApi.Submit command(Create scenario, long tick, double duration) {
+    var catalog =
+        new msc.contracts.CatalogContracts.CatalogEntry(
+            "image",
+            1,
+            new msc.domain.missiondefinition.ActivityDefinition(
+                new msc.domain.shared.Ids.ActivityDefinitionId("image"),
+                1,
+                "image",
+                true,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                msc.domain.missiondefinition.AuthorityPolicy.RiskClass.LOW,
+                "template:1"),
+            new msc.contracts.CatalogContracts.CommandTemplate("template", 1, "IMAGE", Map.of()),
+            new msc.contracts.CatalogContracts.ResourceProfile(10, 1, 0),
+            msc.domain.missiondefinition.AuthorityPolicy.Requirement.HUMAN_APPROVAL,
+            duration,
+            "synthetic");
+    when(owner.get(
+            "mission-definition",
+            "/internal/catalog/image/versions/1",
+            msc.contracts.CatalogContracts.CatalogEntry.class))
+        .thenReturn(catalog);
+    var command =
+        new msc.domain.spacecraftcontrol.CommandInstance(
+            new msc.domain.shared.Ids.CommandId(UUID.randomUUID().toString()),
+            "template:1",
+            Map.of(),
+            new OnboardTime(tick, "p1", new msc.domain.shared.Ids.TimeCorrelationId("c1")));
+    var load =
+        new msc.domain.spacecraftcontrol.CommandLoad(
+            new msc.domain.shared.Ids.CommandLoadId(UUID.randomUUID().toString()),
+            new msc.domain.planning.ScheduleKey(
+                new msc.domain.shared.Ids.SpacecraftId(scenario.spacecraftId()),
+                new TimeWindow(MissionInstant.tai(1000), MissionInstant.tai(2000))),
+            1,
+            List.of(command),
+            "m1",
+            new msc.domain.shared.Ids.TimeCorrelationId("c1"),
+            "synthetic-artifact-checksum",
+            Optional.of("trace-only-not-release-authority"),
+            MissionInstant.tai(1010));
+    return new SimulationCommandApi.Submit(
+        load, Map.of(command.id().value(), new CatalogReference("image", 1)));
+  }
+
+  private ResponseEntity<JsonNode> commandPost(
+      UUID scenario, String suffix, Object body, String key, String actor) {
+    var headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", key);
+    String prefix = suffix.equals("advance") ? "/api" : "/internal";
+    return client
+        .withBasicAuth(actor, PASSWORD)
+        .postForEntity(
+            prefix + "/simulation/scenarios/" + scenario + "/" + suffix,
+            new HttpEntity<>(body, headers),
+            JsonNode.class);
+  }
+
+  @Test
+  void commandCompletesOnceAndOriginalReceiptSurvivesClockChanges() {
+    var request = fixture();
+    assertEquals(200, post(request, UUID.randomUUID().toString(), "admin").getStatusCode().value());
+    var load = command(request, 20, 10);
+    String key = UUID.randomUUID().toString();
+    var receipt = commandPost(request.id(), "loads", load, key, "service");
+    assertEquals(200, receipt.getStatusCode().value());
+    assertEquals("PENDING", receipt.getBody().at("/body/entries/0/status").asText());
+    var beforeEnd =
+        commandPost(
+            request.id(), "advance", new SimulationCommandApi.Advance(1, 119), key, "admin");
+    assertEquals(200, beforeEnd.getStatusCode().value());
+    assertEquals(20, beforeEnd.getBody().at("/body/reservoirs/storedMegabytes").asDouble());
+    var atEnd = new SimulationCommandApi.Advance(2, 120);
+    var applied = commandPost(request.id(), "advance", atEnd, key + "-end", "admin");
+    assertEquals(200, applied.getStatusCode().value());
+    assertEquals(21, applied.getBody().at("/body/reservoirs/storedMegabytes").asDouble());
+    assertEquals(
+        applied.getBody(),
+        commandPost(request.id(), "advance", atEnd, key + "-end", "admin").getBody());
+    reset(owner);
+    assertEquals(
+        receipt.getBody(),
+        commandPost(request.id(), "loads", load, key + "-retransmit", "service").getBody());
+    var restarted = new SimulationCommandApi(store, owner, json);
+    assertTrue(
+        store
+            .replay("simulation-load:" + request.id() + ":service", key + "-retransmit", load)
+            .isPresent());
+    var ledger = restarted.read(request.id(), load.load().id().value());
+    assertEquals(
+        SimulationCommandApi.Status.EFFECT_APPLIED, ledger.body().entries().getFirst().status());
+    assertEquals(20, ledger.body().entries().getFirst().effect().before().storedMegabytes());
+    assertEquals(21, ledger.body().entries().getFirst().effect().after().storedMegabytes());
+    var later =
+        commandPost(
+            request.id(),
+            "advance",
+            new SimulationCommandApi.Advance(3, 130),
+            key + "-later",
+            "admin");
+    assertEquals(21, later.getBody().at("/body/reservoirs/storedMegabytes").asDouble());
+    verifyNoInteractions(owner);
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM outbox WHERE event_type='SpacecraftExecutionObserved'",
+            Integer.class));
+  }
+
+  @Test
+  void rejectsOverlapOffGridDurationAndChangedLoadWithoutEffect() {
+    var scenario = fixture();
+    assertEquals(
+        200, post(scenario, UUID.randomUUID().toString(), "admin").getStatusCode().value());
+    var first = command(scenario, 20, 10);
+    assertEquals(
+        200,
+        commandPost(scenario.id(), "loads", first, "load-1", "service").getStatusCode().value());
+    var overlap = command(scenario, 119, 10);
+    assertEquals(
+        409,
+        commandPost(scenario.id(), "loads", overlap, "overlap", "service").getStatusCode().value());
+    var offGrid = command(scenario, 200, 0.15);
+    assertEquals(
+        400,
+        commandPost(scenario.id(), "loads", offGrid, "off-grid", "service")
+            .getStatusCode()
+            .value());
+    var changed =
+        new SimulationCommandApi.Submit(
+            first.load(),
+            Map.of(
+                first.load().commands().getFirst().id().value(), new CatalogReference("other", 1)));
+    assertEquals(
+        409,
+        commandPost(scenario.id(), "loads", changed, "different", "service")
+            .getStatusCode()
+            .value());
+    assertEquals(
+        400,
+        commandPost(
+                scenario.id(),
+                "advance",
+                new SimulationCommandApi.Advance(1, 10000),
+                "outside",
+                "admin")
+            .getStatusCode()
+            .value());
+    assertEquals(
+        403,
+        commandPost(
+                scenario.id(),
+                "advance",
+                new SimulationCommandApi.Advance(1, 120),
+                "forbidden",
+                "service")
+            .getStatusCode()
+            .value());
+    assertEquals(
+        400,
+        commandPost(
+                scenario.id(),
+                "advance",
+                new SimulationCommandApi.Advance(1, Long.MAX_VALUE),
+                "overflow",
+                "admin")
+            .getStatusCode()
+            .value());
+    assertEquals(1, store.history("simulation-scenario", scenario.id().toString()).size());
+  }
+
+  @Test
+  void scenarioWriteFailureRollsBackLedgerAndIdempotency() {
+    var scenario = fixture();
+    assertEquals(
+        200, post(scenario, UUID.randomUUID().toString(), "admin").getStatusCode().value());
+    var load = command(scenario, 20, 10);
+    assertEquals(
+        200,
+        commandPost(scenario.id(), "loads", load, "submit", "service").getStatusCode().value());
+    var failing = spy(store);
+    doThrow(new IllegalStateException("injected scenario write failure"))
+        .when(failing)
+        .update(eq("simulation-scenario"), eq(scenario.id().toString()), eq(1L), any());
+    var restarted = new SimulationCommandApi(failing, owner, json);
+    var actor =
+        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            "admin", "unused");
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            restarted.advance(
+                scenario.id(), new SimulationCommandApi.Advance(1, 120), "rollback", actor));
+    assertEquals(
+        1, store.history("simulation-load:" + scenario.id(), load.load().id().value()).size());
+    assertEquals(1, store.history("simulation-scenario", scenario.id().toString()).size());
+    assertEquals(
+        200,
+        commandPost(
+                scenario.id(),
+                "advance",
+                new SimulationCommandApi.Advance(1, 120),
+                "rollback",
+                "admin")
+            .getStatusCode()
+            .value());
+    assertEquals(
+        21,
+        store
+            .require("simulation-scenario", scenario.id().toString(), Scenario.class)
+            .body()
+            .reservoirs()
+            .storedMegabytes());
+  }
 }

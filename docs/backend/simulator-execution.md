@@ -1,7 +1,8 @@
 # Simulator onboard execution
 
-Status: completion-effect arithmetic and persistent scenario initialization are implemented.
-Durable receipt/execution records, command-clock advancement and delivery/reconciliation remain in progress. This is
+Status: completion-effect arithmetic, persistent scenario initialization, load receipts and
+modeled command completion with clock advancement are implemented. Delivery/reconciliation
+and full physical state/product evolution remain in progress. This is
 an incremental part of the full spacecraft and ground-station simulator requirements.
 
 `SimulatorOperationEffects` consumes a resolved catalog, matching operation-resource profile,
@@ -20,8 +21,8 @@ defined checkpoint in an atomic-completion model, not a continuous physical peak
 Invalid initial reservoirs or mismatched evidence are rejected. Unsupported MANEUVER,
 nonfinite arithmetic, storage overflow and insufficient propellant return an unchanged state
 and no partially applied production, drain or burn. A successful result is `APPLIED`, not a
-ground-observed command `EXECUTED` assertion. The future executor must persist the effect
-and command ledger together, with duplicate suppression, ordered completion and restart proof.
+ground-observed command `EXECUTED` assertion. The executor persists the effect
+and command ledger together, with duplicate suppression and ordered completion.
 
 The result retains declared power consumption but does not yet evolve a battery. Battery,
 orbital and attitude evolution remain required follow-up implementation, using explicit
@@ -71,3 +72,58 @@ snapshots, creation/read roles, durable reads, replay and duplicate/conflicting 
 Evidence: `.local/simulation-scenario-verification.json` and
 `/private/tmp/msc-scenario-live.log`. Only the Simulator Deployment was replaced; other
 service images and replica settings were preserved.
+
+## Command loads and deterministic completion
+
+SERVICE `POST /internal/simulation/scenarios/{id}/loads` accepts the existing semantic
+`CommandLoad` plus an exact catalog reference for each command ID. It resolves catalogs through
+Mission Definition HTTP and pins their content/hash in the ledger. Templates, parameters,
+operation profiles, mission/correlation identity and schedule horizon must match. Duration is
+converted from the decimal catalog seconds to an exact integer tick count; unrepresentable
+fractions and arithmetic overflow are input errors. Both start and completion must lie within
+the pinned correlation validity interval. The load must arrive before its commit deadline in
+simulation time and cannot introduce a command in the scenario's past.
+
+The current model explicitly permits only one activity at a time per scenario. Overlapping
+half-open command intervals and command IDs reused across loads are rejected. At most 100
+commands per load and 500 commands per scenario bound each transaction's work; larger scenarios
+require another scenario, not silently skipped commands. These are simulation implementation
+limits, not satellite hardware specifications.
+
+Identical load retransmission returns its immutable original receipt, including after clock
+advancement or with a new idempotency key. A canonical submission fingerprint detects changed
+content under the same load ID. The caller's artifact checksum remains a traceability field;
+this adapter does not claim to verify encoded uplink bytes or release authority. SERVICE
+authentication and an authorization-reference string do not replace the pending Control gate.
+
+ADMIN `POST /api/simulation/scenarios/{id}/advance` supplies `expectedVersion` and `targetTick`.
+Scenario locking serializes submission and advancement. Due commands are ordered by completion
+tick, load ID and command ID. The calculator applies the declared IMAGE/DOWNLINK effects at
+completion, and the scenario reservoirs, clock and affected command-ledger revisions commit
+together. Failure rolls back all those writes and the idempotency record. The model does not
+claim progressive physics between clock instants.
+
+The ledger distinguishes `PENDING`, `EFFECT_APPLIED`, `REJECTED` and `NOT_SUPPORTED`.
+SERVICE diagnostic GET on `/internal/simulation/scenarios/{id}/loads/{loadId}` returns current
+onboard facts. Submission and advancement publish no `SpacecraftExecutionObserved` event:
+delayed/lost acknowledgments and explicit ground delivery/reconciliation remain to be connected.
+Reading the diagnostic ledger is not a ground acknowledgment. No new payload bytes, battery
+evolution or maneuver physics are claimed by these completion facts.
+
+The expanded focused Maven run passed 13 tests (six calculator tests and seven HTTP/DB tests),
+log `/private/tmp/msc-command-api.log`. New tests exercise no pre-completion effect, one applied
+effect across replay and further advancement, original receipt retention after completion,
+fresh-controller DB reconstruction, overlap/off-grid/overflow rejection, and injected scenario
+write failure rolling back ledger updates. Full-process restart and actual ground delivery
+are not established by these tests.
+
+The subsequent deployed verifier `scripts/verify-simulation-command.py` passed six checks
+against actual Mission Definition and Simulator APIs, including pre-completion state, exact
+declared IMAGE resource change, replay and absence of repeat effects. A real Kubernetes
+`rollout restart deployment/simulator` then replaced the process. Running the verifier with
+`--after-restart` passed three further checks: identical scenario state, identical command
+ledger, and no duplicate effect after another clock advance. Logs are
+`/private/tmp/msc-command-live.log` and `/private/tmp/msc-command-restart-live.log`;
+local evidence files are `.local/simulation-command-verification.json` and
+`.local/simulation-command-restart-verification.json`. This establishes restart persistence
+for the completed modeled IMAGE case, not crash-at-every-instruction proof or ground delivery.
