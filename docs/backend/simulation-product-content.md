@@ -1,6 +1,6 @@
 # Product downloads and synthetic byte previews
 
-This implementation checkpoint is not yet deployed. All routes below require ADMIN,
+This implementation is deployed in local Kubernetes (evidence below). All routes below require ADMIN,
 OPERATOR or SERVICE. Requester delivery/ownership and fulfillment remain separate work.
 
 Under `/api/products/simulation-source-packages/{productId}`:
@@ -33,8 +33,28 @@ Successful replay does no object I/O.
 PNG using ImageIO and checks actual sample values, size limits, full-source hash validation,
 owned source/index streaming, missing membership, corrupt/truncated/oversize input,
 replay and outbox rollback. These checks do not establish HTTP role enforcement or actual
-MinIO streaming for the newly added endpoints; deployed verification remains pending.
+MinIO streaming for the newly added endpoints; deployed verification is recorded below.
 
 This supports viewing synthetic product bytes. A mission-qualified quicklook using an
 explicit instrument raster/packet model, quality decisions and request fulfillment remain
 part of the full backend goal.
+
+
+## Deployed verification — 2026-09-12
+
+Product image `msc-product:479d5ce44d1ddb4726279866` rolled out successfully with
+its existing replica count retained. `python3 scripts/verify-product-content.py` uses
+Pillow to decode the PNG returned by the actual API and compares every displayed sample
+against the downloaded source bytes. It passed all six check groups: raw source/hash/ETag,
+JSON index, PNG size/hash/pixels, provenance and layout scope, idempotency, requester
+403s and a missing-membership 404.
+
+Product `a08bc407-3927-445e-aad0-721dffcf0067` provided a 1,000,000-byte source and
+a 256×256 preview (651-byte PNG, SHA-256
+`5d46276f13a8d75b41615df05e2ea11cb0ce2fe3c14356e682b36aa6e8a9a5d1`).
+All 65,536 displayed pixels matched the raw prefix exactly. Visual inspection showed
+the expected repeating grayscale byte pattern. This is not a ground image.
+
+Evidence: `.local/product-content-verification.json`,
+`.local/simulation-byte-preview.png`, `/private/tmp/msc-product-content-live.log`.
+The verifier requires Pillow and authenticates using local credentials without printing them.

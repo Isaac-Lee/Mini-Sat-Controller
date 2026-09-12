@@ -133,3 +133,12 @@ and verifies sources via Acquisition HTTP APIs, and retains raw files plus an ev
 in its own S3 bucket. The 12th service was deployed and actual RabbitMQ-to-MinIO generation
 passed; see [Product evidence](simulation-source-product.md). This does not complete L0,
 quicklook, packet reconstruction, product quality decisions or request fulfillment.
+
+
+### Product content and byte preview checkpoint (2026-09-12)
+
+Product now serves owned raw sources and index downloads and creates a bounded PNG byte
+preview after whole-source integrity verification. Deployed API checks compared all 65,536
+preview pixels with the source and verified roles/idempotency; see [content evidence](simulation-product-content.md).
+This diagnostic synthetic preview does not complete a mission-qualified imagery quicklook,
+coverage/cloud assessment or request fulfillment.
