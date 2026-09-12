@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: product
+  config:
+    import: classpath:application-platform.yaml
+msc:
+  events:
+    consume: false
+  s3:
+    enabled: true
+    bucket: msc-product
+    endpoint: ${MSC_S3_ENDPOINT:}
+    access-key: ${MSC_S3_ACCESS_KEY:}
+    secret-key: ${MSC_S3_SECRET_KEY:}

@@ -169,6 +169,24 @@ public class SimulationSourceApi {
     }
   }
 
+  @GetMapping("/internal/acquisition/simulation-sources/{id}/content")
+  @PreAuthorize("hasRole('SERVICE')")
+  public org.springframework.http.ResponseEntity<
+          org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody>
+      content(@PathVariable String id) {
+    var source = read(id).body();
+    return org.springframework.http.ResponseEntity.ok()
+        .contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+        .contentLength(source.byteCount())
+        .header("X-MSC-Environment", "SIMULATION")
+        .body(
+            output -> {
+              try (var input = objects.read(source.objectReference())) {
+                input.transferTo(output);
+              }
+            });
+  }
+
   @GetMapping({
     "/api/acquisition/simulation-sources/{id}",
     "/internal/acquisition/simulation-sources/{id}"

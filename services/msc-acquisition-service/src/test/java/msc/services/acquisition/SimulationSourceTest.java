@@ -116,6 +116,21 @@ class SimulationSourceTest {
   }
 
   @Test
+  void contentStreamsOnlyTheOwnedStoredSource() throws Exception {
+    api.acquire(request, "content", actor);
+    String reference = api.read(id).body().objectReference();
+    when(objects.read(reference)).thenReturn(new ByteArrayInputStream(bytes));
+    var response = api.content(id);
+    assertEquals(bytes.length, response.getHeaders().getContentLength());
+    assertEquals("SIMULATION", response.getHeaders().getFirst("X-MSC-Environment"));
+    var output = new ByteArrayOutputStream();
+    response.getBody().writeTo(output);
+    assertArrayEquals(bytes, output.toByteArray());
+    verify(objects).read(reference);
+    assertThrows(ApiException.class, () -> api.content("f".repeat(64)));
+  }
+
+  @Test
   void rejectsCorruptAndTruncatedBytesBeforeStorage() throws Exception {
     doAnswer(
             call -> {
