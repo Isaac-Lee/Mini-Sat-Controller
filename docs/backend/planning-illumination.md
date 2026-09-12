@@ -87,7 +87,7 @@ including a possible `NOT_ESTABLISHED` outcome, not that a candidate is feasible
 pinned revision, attempt count and an issue code to ADMIN/OPERATOR/SERVICE. Pre-feature runs
 without automatic work return 404; their manual evaluation endpoint remains available.
 
-The new worker is source-only until its subsequent deployment verification. PostgreSQL tests
+PostgreSQL tests
 cover automatic completion, no duplicate processing, pinned-version recovery, expired-token
 fencing, superseded-input exclusion and transient-owner retry without fabricated assumptions.
 
@@ -96,3 +96,25 @@ on 2026-09-12 (`/private/tmp/msc-planning-illumination-worker.log`); this includ
 persistence lifecycle cases inherited by the worker test fixture. The intake test also checks
 that a successfully published run has a queued illumination item. These direct worker tests
 use actual PostgreSQL and mocked HTTP owners; they do not yet prove scheduled execution in K8s.
+
+## Deployed automatic worker verification
+
+Planning image `msc-planning:2960eb9864c0a735c59f4854` subsequently rolled out with two
+ready replicas and V4 migrated successfully on 2026-09-12. All ten Deployments were ready.
+`python3 scripts/verify-planning-search.py --with-runs --with-illumination --timeout-seconds 300`
+passed 18 check groups, covering the existing search/run/resource checks and the automatic
+illumination extension. The helper `scripts/verify-planning-illumination-worker.py` publishes
+explicit test assumptions before submitting a new synthetic request, then only polls work and
+reads evidence; it never calls the manual illumination POST.
+
+Request `50c5be4f-cc62-45be-a788-2a9f879dc8d4` produced run
+`6684d064-b2e2-3dce-83cb-76a24b8ae880`. Its automatic work reached `EVALUATED` in one
+attempt with assumptions version 1 and no issue. Assessment
+`2f09c295d580e233ee5cce2419d9a59ce3d2bdee92d02e42c8bc3a2be5850367` retained the exact
+candidate window and Mission Definition source, and the FD result was read back from its
+owner. The result was `NOT_ESTABLISHED`; overall candidate feasibility remained unchanged.
+The test also verified requester denial and operator/service work-state reads. It cancelled
+the synthetic request afterward and checked retained run/resource evidence.
+Evidence: `.local/planning-search-verification.json` and
+`/private/tmp/msc-planning-illumination-worker-live.log`. This demonstrates scheduled execution
+with two deployed replicas, not a throughput benchmark or physical qualification.

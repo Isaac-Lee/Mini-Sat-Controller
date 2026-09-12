@@ -19,7 +19,10 @@ def main():
     parser.add_argument('--timeout-seconds', type=float, default=120,
                         help='Bounded wait for rotated fleet retries, including cache bucket renewal (default: 120)')
     parser.add_argument('--with-runs', action='store_true', help='Verify durable runs with complete simulation input categories')
+    parser.add_argument('--with-illumination', action='store_true', help='Verify automatic illumination (requires --with-runs)')
     args = parser.parse_args()
+    if args.with_illumination and not args.with_runs:
+        parser.error('--with-illumination requires --with-runs')
     if not 1 <= args.timeout_seconds <= 900:
         parser.error('--timeout-seconds must be between 1 and 900')
     run = uuid.uuid4().hex
@@ -90,6 +93,9 @@ def main():
             'south': lat-.001, 'north': lat+.001, 'sourceReference': 'synthetic-propagated-subpoint'}
     if args.with_runs:
         importlib.import_module('verify-planning-runs').seed(call, craft, run, area)
+    solar_source = None
+    if args.with_illumination:
+        solar_source = importlib.import_module('verify-planning-illumination-worker').seed(call, craft, run, area, epoch)
     request = call(8101, 'POST', '/api/requests', {
         'target': 'Synthetic orbital subpoint',
         'area': area,
@@ -157,6 +163,9 @@ def main():
                                  'immutable resource assessment and API roles',
                                  'telemetry-anchored reservoir arithmetic and resource decision',
                                  'exact mission operation catalog and resource profile evidence']
+        if args.with_illumination:
+            result['automaticIllumination'] = importlib.import_module('verify-planning-illumination-worker').verify(call, published_run, solar_source)
+            result['passed'] += ['automatic queued illumination with pinned owner version', 'automatic work API roles', 'persisted FD evidence without manual evaluation']
         (ROOT / '.local/planning-search-verification.json').write_text(json.dumps(result, indent=2)+'\n')
         print(json.dumps(result, indent=2))
     finally:
