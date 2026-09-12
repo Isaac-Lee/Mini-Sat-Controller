@@ -36,8 +36,8 @@ public class ExecutionEvidenceApi implements EventHandler {
   @Override
   public void handle(ServiceEvent event) {
     if (!event.type().equals("SpacecraftExecutionObserved")) {
-      // Retain schedule inputs for the pending preparation/release workflow instead of
-      // acknowledging and silently discarding facts already routed to this service.
+      // Retain schedule inputs for audit; preparation and V1 release resolve their owner
+      // snapshots directly rather than treating this event as commanding authority.
       store.create("deferred-control-input", event.eventId().toString(), event);
       return;
     }
@@ -54,8 +54,8 @@ public class ExecutionEvidenceApi implements EventHandler {
         throw ApiException.conflict("Conflicting execution observation for scenario/load");
       return;
     }
-    // Command preparation/release binding has not been implemented yet. Preserve source facts
-    // without promoting them to confirmed spacecraft execution or a verified command load.
+    // Preserve received facts first. SimulationExecutionBindingApi separately verifies the
+    // released load and simulator ledger before identifying request-bound modeled effects.
     store.create(
         "simulation-execution-evidence",
         id,

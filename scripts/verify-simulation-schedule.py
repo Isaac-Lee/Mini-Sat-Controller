@@ -3,7 +3,7 @@
 import time
 
 
-def verify(call, run, key):
+def verify(call, run, key, with_dispatch=False):
     candidate = run['run']['candidates'][0]
     body = {'candidateId': candidate['id']['value'], 'cameraModelVersion': 1,
             'expectedScheduleVersion': 0, 'reviewReference': 'V1-sampled-simulation-review'}
@@ -28,7 +28,8 @@ def verify(call, run, key):
     else:
         raise AssertionError(('Tasking did not receive schedule progress', request))
     start = candidate['activity']['window']['start']
-    epoch = {**start, 'seconds': start['seconds'] - 30}
+    epoch = {**start, 'seconds': start['seconds'] - 60}
+    deadline = {**start, 'seconds': start['seconds'] - 30}
     end = {**start, 'seconds': start['seconds'] + 3600}
     correlation = call(8104, 'POST', '/api/simulation-time-correlations', {
         'expectedVersion': 0, 'correlation': {
@@ -44,20 +45,25 @@ def verify(call, run, key):
         'id': {'value': 'v1-' + key}, 'schedule': schedule['key'],
         'scheduleVersion': schedule['version'], 'correlationVersion': correlation['version'],
         'catalogsByActivity': {activity: {'catalogId': catalog['id'], 'catalogVersion': catalog['version']}},
-        'parametersByActivity': {activity: {}}, 'deadline': epoch}, key, 'operator1')
+        'parametersByActivity': {activity: {}}, 'deadline': deadline}, key, 'operator1')
     load = prepared['body']['load']
     assert load['scheduleKey'] == schedule['key']
     assert load['scheduleVersion'] == schedule['version']
     assert len(load['commands']) == 1
     assert prepared['body']['sources']['schedule'] == schedule
     approval = call(8107, 'POST', '/api/command-loads/' + prepared['id'] + '/approvals', {
-        'checksum': load['checksum'], 'validUntil': epoch, 'expectedVersion': 0}, key, 'operator1')
+        'checksum': load['checksum'], 'validUntil': deadline, 'expectedVersion': 0}, key, 'operator1')
     assert approval['body']['actorId'] == 'operator1'
     schedule_check = call(8107, 'POST', '/api/command-loads/' + prepared['id'] + '/schedule-check',
                           user='operator1')
     assert schedule_check['reasons'] == []
     assert call(8102, 'GET', '/internal/planning/runs/' + run['id']) == run
-    return {'decisionId': committed['id'], 'schedule': schedule['key'],
+    result = {'decisionId': committed['id'], 'schedule': schedule['key'],
             'scheduleVersion': schedule['version'], 'requestStatus': 'SCHEDULED',
             'preparedLoadId': prepared['id'], 'approvalActor': 'operator1', 'environment': 'SIMULATION',
             'deferredChecks': decision['deferredChecks']}
+
+    if with_dispatch:
+        import importlib
+        result['execution'] = importlib.import_module('verify-simulation-dispatch').execute(call, run, prepared, correlation, key)
+    return result

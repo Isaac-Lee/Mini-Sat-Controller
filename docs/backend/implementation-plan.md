@@ -216,3 +216,14 @@ selection clears any in-flight Planning lease. Tasking receives the assignment p
 The guided search verifier now optionally prepares a real Control load from this saved schedule.
 See [V1 schedule API](simulation-schedule-v1.md). Downstream release, simulator execution and
 product-to-request fulfillment remain the next integration slice, not completed by preparation.
+
+### V1 reviewed Control delivery and execution binding (2026-09-12)
+
+Control now stores a simulation release for an owned V1 request schedule, rechecks current
+schedule/authority/safety/request state before delivery, and reconciles uncertain HTTP delivery
+against the Simulator's immutable load identity. Durable outbound attempts and stable submission
+keys recover after lost acknowledgments or local result rollback. Received execution evidence
+can be bound to the exact released command content, ledger hash and original request IDs.
+The guided verifier continues through IMAGE execution, lost ACK/reconciliation and synthetic
+payload creation. See [V1 Control delivery](simulation-command-delivery-v1.md). Ground downlink
+and request-product fulfillment integration remain outstanding.
