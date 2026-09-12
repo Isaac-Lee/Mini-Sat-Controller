@@ -1,8 +1,8 @@
 # Product-owned synthetic source packages
 
 Product is an independent Spring Boot module with its own database and `msc-product`
-S3 bucket. This source checkpoint is not yet deployed and event consumption is disabled
-until the durable product worker is connected.
+S3 bucket. This source checkpoint is not yet deployed. Completion-event intake is now
+connected through the transactional inbox and a durable Product-owned work queue.
 
 POST `/api/products/simulation-source-packages` accepts a `manifestId` UUID and an
 `Idempotency-Key` from ADMIN, OPERATOR or SERVICE. Product obtains the Acquisition
@@ -37,7 +37,22 @@ corrupt-byte rejection and outbox rollback/retry. Acquisition's content test che
 reference selection, byte stream and missing-source rejection. These tests do not prove
 real HTTP authorization, MinIO copies, Product deployment or downstream fulfillment.
 
-Next integration: durable completion-event intake, independent K8s deployment, actual
+`SimulationAcquisitionDataComplete` is routed to Product. The inbox checks manifest
+identity, event aggregate/version and complete source evidence, then pins its canonical
+hash in `simulation_product_work` without object or owner HTTP I/O. Duplicate events
+converge on one job; conflicting events roll back inbox acceptance. Other production
+inputs remain retained for their pending workflow.
+
+Workers claim one job with `FOR UPDATE SKIP LOCKED` and a 60-minute lease to cover up to
+64 sequential bounded transfers. They retry transient errors after 30 seconds and reject
+invalid evidence. A stale worker cannot update a replacement lease status; idempotent
+immutable product publication prevents duplicate product records. Work status is readable
+at `/api/products/simulation-source-packages/{id}/work` and the `/internal` equivalent.
+`SimulationProductWorkerTest` exercises real DB inbox deduplication, recovery after an
+expired claim, transient retry, owner-hash mismatch and invalid event envelope rollback.
+RabbitMQ live delivery remains to be verified after deployment.
+
+Next integration: independent K8s deployment, actual
 cross-service source copy verification, product download, synthetic quicklook and quality
 workflow. Packet-level reconstruction, actual instrument L0 qualification and evidence-based
 request fulfillment remain in the full backend scope.

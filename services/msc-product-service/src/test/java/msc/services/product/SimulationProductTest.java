@@ -48,7 +48,8 @@ class SimulationProductTest {
             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     Flyway.configure().dataSource(ds).load().migrate();
     db = new JdbcTemplate(ds);
-    db.execute("TRUNCATE state_head,state_history,idempotency,outbox,inbox");
+    db.execute(
+        "TRUNCATE state_head,state_history,idempotency,outbox,inbox,simulation_product_work");
     store =
         new StateStore(
             db,
