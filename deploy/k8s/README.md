@@ -33,8 +33,8 @@ not qualify. See [reference archive](../../docs/backend/reference-archive.md).
 
 Resource requests/limits are initial local validation settings, not production
 capacity measurements. Database pool size must be budgeted across all replicas,
-including rollout surge. HPA and metrics-server installation are not claimed;
-the explicit replica count allows independent scale testing first.
+including rollout surge. The default render keeps explicit replica counts; HPAs are
+opt-in with `--hpa` (see [Autoscaling and load smoke](#autoscaling-and-load-smoke)).
 
 ## Local kind workflow
 
@@ -130,3 +130,73 @@ recovered in 6.624 seconds; a living but deliberately stalled child recovered in
 19.728 seconds. Evidence is in `.local/k8s/forward-recovery-verification.json` and
 `.local/k8s/forward-stall-recovery-verification.json`. These checks establish local
 tunnel recovery, not production service availability or load capacity.
+
+## Autoscaling and load smoke
+
+`render-k8s.py --hpa` adds an `autoscaling/v2` HPA (min 1, max 2, CPU 80% of the
+250m request, 60 s scale-up and 300 s scale-down stabilization) for acquisition,
+planning and tasking only, the services with recorded multi-replica checks
+(`verify-k8s.py`, `verify-tasking-replicas.py`). Their Deployments omit
+`spec.replicas` so the HPA owns it; the other nine services keep one replica because
+their workers and safety gates have no concurrent-replica verification. The fixed
+two-replica assertions in `verify-k8s.py` apply to the default render, not `--hpa`.
+
+With `--hpa` the renderer pins `MSC_DATABASE_POOL_SIZE` on every Deployment and
+refuses to render when the worst case exceeds `--database-max-connections`
+(default 100, the PostgreSQL default; all service databases share one local server).
+Worst case = (9 fixed Pods + 3 × 2 HPA Pods + 12 surge Pods) × pool. The 12 surge
+Pods cover one apply rolling every Deployment at once. Pool 2 (the local runtime
+value) needs 54 connections; pool 6 needs 162 and the platform default 8 needs 216,
+which are both rejected. Pool sizes below 1 are rejected too. Local render:
+
+```sh
+python3 scripts/render-k8s.py --images .local/service-images.json --hpa \
+  --database-pool-size 2 --local-orekit-host-path /msc-orekit \
+  --local-metrics-server > .local/k8s/services.json
+```
+
+`--local-metrics-server` appends metrics-server v0.7.2 with
+`--kubelet-insecure-tls`, labelled `msc.local-only: "true"`. It is only for the
+project-owned kind node. Never apply it to a shared or production cluster, and skip
+it where the cluster already runs metrics-server (k3s/Rancher Desktop).
+
+`scripts/load-smoke.py` sends a bounded number of read-only GETs (default 600,
+concurrency 4, max 10000/16). Request *i* goes to target *i* mod N over the localhost
+ports of `forward-local-k8s.py`. It records p50/p90/p99/max latency, error rate and
+status counts per target, plus first/peak/last `kubectl top pods` CPU and memory, under
+`environment: local` with the date and machine. It reports no throughput rating.
+`/internal/*` targets are sent as the `service` user (SERVICE role) and `/api/*` as
+`admin`. Planning and acquisition have no id-free read endpoint, so target them with
+`--target planning:8102:/internal/planning/runs/<id>` using an existing id.
+`python3 scripts/test_k8s_scaling.py` checks the renderer and load-smoke logic offline.
+
+### Estimates to compare against (not yet measured)
+
+| Item | Estimate | Basis |
+| --- | --- | --- |
+| Idle CPU per service Pod | well below the 250m request | request sized for startup headroom, not observed |
+| Steady memory per Pod | under 512Mi limit (768Mi flight-dynamics); heap ≤ 60% of limit | `MaxRAMPercentage=60` |
+| Read-smoke latency (local, concurrency 4) | p99 under 1 s, error rate 0 | no prior measurement; to be replaced |
+| HPA scale-up | only when sustained average CPU > 200m per Pod | 80% of 250m request |
+| DB connections at HPA max during a full rollout (pool 2) | ≤ 54 | renderer budget above |
+
+### Measurement status: environment local, 2026-11-07, not measured
+
+Machine: Apple M3, 8 CPUs, 16 GiB, macOS 27.2. Nothing was measured, so no latency,
+error-rate or CPU/memory numbers are recorded. At the time, Docker Desktop (which
+hosts the `msc-local` kind cluster) was stopped, its kubeconfig endpoint refused
+connections, and no local PostgreSQL, RabbitMQ or MinIO listener was running.
+Rancher Desktop's k3s node was up with metrics-server, but it allocates 2 CPUs.
+The 12 services request 3 CPUs together, so they cannot be scheduled there.
+`render-k8s.py --hpa --database-pool-size 2 --local-metrics-server` output passed
+`kubectl apply --dry-run=client --validate=strict` against that k3s API (v1.34).
+This is schema validation only. No object was applied, and HPA behavior, scaling and
+the DB-pool budget remain unverified.
+
+To measure: start Docker Desktop and the local infrastructure, then deploy with the
+`--hpa` render above. Run `forward-local-k8s.py` and confirm
+`kubectl --kubeconfig .local/k8s/kubeconfig top pods -n msc` returns data. Then run
+`python3 scripts/load-smoke.py --output .local/k8s/load-smoke.json`. Also record
+`kubectl get hpa -n msc` before and after the run. Replace this subsection with the
+recorded numbers, the date and the machine, and compare each with the estimates
+table. These are local numbers only and never production capacity.
