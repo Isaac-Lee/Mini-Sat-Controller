@@ -40,6 +40,12 @@ safety latch, and each assignment's current request revision and V1 decision. Fr
 repeats those checks and verifies the deadline after the owner reads. This is the V1 functional
 simulation workflow, not a distributed production authorization fence or precision FD clearance.
 
+Delivery goes through `CommandReleaseGate`, the only caller of `SpacecraftLinkPort`. The gate
+refuses a non-allowed release decision (built from the live schedule and authority checks) or a
+load other than the checked binding, records the attempt, then calls the SIMULATION link adapter
+`SimulationSpacecraftLink`. Transport is the Simulator's JSON HTTP API, **not CCSDS**: no frames,
+APIDs or RF are modelled ([ADR-0004](../architecture/adr/0004-space-link.md)).
+
 A durable attempt precedes outbound I/O. A stable Simulator idempotency key and immutable
 submission prevent duplicate loads when an HTTP acknowledgment or a local result write fails.
 Transport uncertainty is saved as UNKNOWN. Before retrying, Control reads the Simulator ledger;
