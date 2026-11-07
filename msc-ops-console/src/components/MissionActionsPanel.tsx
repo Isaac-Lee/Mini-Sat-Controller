@@ -15,7 +15,8 @@ function verdict(shown: unknown): { ok: boolean; label: string } {
   const value = shown as { belief?: string; reason?: string; body?: { status?: string } } | null
   const status = value?.belief ?? value?.body?.status
   if (!status) return { ok: true, label: '응답 수신' }
-  const ok = ['ACCEPTED', 'OBSERVED', 'SIMULATION_EFFECTS_CONFIRMED'].includes(status)
+  // COMPLETE is the simulation-result registration's success status (SimulationResultApi).
+  const ok = ['ACCEPTED', 'OBSERVED', 'SIMULATION_EFFECTS_CONFIRMED', 'COMPLETE'].includes(status)
   return { ok, label: value?.reason ? `${status} (${value.reason})` : status }
 }
 
