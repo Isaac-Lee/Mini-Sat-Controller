@@ -65,7 +65,7 @@ describe('demo backend', () => {
 
   it('keeps access windows inside the requested horizon', async () => {
     const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' as const }
-    const end = { ...start, seconds: start.seconds + 86_400 }
+    const end = { ...start, seconds: start.seconds + 7 * 86_400 }
     const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
     const query = { kind: 'POINT_IMAGING' as const, target, horizon: { start, end }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
     const { body } = await api.requestAccessPrediction('demo-orbit-snapshot-1', query, 'k')

@@ -1,12 +1,14 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
-import type { Area, GroundPoint } from '../api/types'
+import type { Area, GroundPoint, TimeWindow } from '../api/types'
 
 interface Props {
   track: GroundPoint[]
   currentIndex: number | null
   requestArea?: Area | null
+  /** Imaging window to emphasise on the track (TAI bounds, compared against sample times). */
+  highlight?: TimeWindow | null
 }
 
 // Splits the polyline wherever the ground track crosses the +/-180 deg antimeridian,
@@ -26,7 +28,7 @@ function splitAtAntimeridian(track: GroundPoint[]): [number, number][][] {
   return segments
 }
 
-export function MapView({ track, currentIndex, requestArea }: Props) {
+export function MapView({ track, currentIndex, requestArea, highlight }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const trackLayerRef = useRef<L.LayerGroup | null>(null)
@@ -58,7 +60,14 @@ export function MapView({ track, currentIndex, requestArea }: Props) {
     for (const segment of splitAtAntimeridian(track)) {
       L.polyline(segment, { color: '#2563eb', weight: 2, opacity: 0.8 }).addTo(layer)
     }
-  }, [track])
+    if (!highlight) return
+    const inside = track.filter((p) => p.time.seconds >= highlight.start.seconds && p.time.seconds <= highlight.end.seconds)
+    if (inside.length === 0) return
+    for (const segment of splitAtAntimeridian(inside)) {
+      L.polyline(segment, { color: '#f97316', weight: 6, opacity: 0.95 }).bindTooltip('예상 촬영 가능 구간').addTo(layer)
+    }
+    map.fitBounds(L.latLngBounds(inside.map((p) => [p.latitudeDegrees, p.longitudeDegrees] as [number, number])).pad(3), { maxZoom: 6 })
+  }, [track, highlight])
 
   useEffect(() => {
     const map = mapRef.current
@@ -104,7 +113,8 @@ export function MapView({ track, currentIndex, requestArea }: Props) {
       <div ref={containerRef} role="img" aria-label="위성 지상궤적 및 요청 영역 지도" style={{ width: '100%', height: '100%' }} />
       {requestArea && (
         <div className="map-legend">
-          요청 영역(초록 사각형) · 출처: {requestArea.sourceReference} · 센서 투영 오버레이는 이 지도에 미연결 (샘플 평가는 임무 흐름에서 조회)
+          요청 영역(초록 사각형) · 출처: {requestArea.sourceReference}
+          {highlight && ' · 주황 굵은 선: 예상 촬영 가능 구간(AOI 중심점 기준)'} · 센서 투영 오버레이는 이 지도에 미연결 (샘플 평가는 임무 흐름에서 조회)
         </div>
       )}
       {requestArea && (

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, newIdempotencyKey } from '../api/client'
 import { taskingApi } from '../api/tasking'
-import type { Area, Place, RequestState, Submission } from '../api/types'
+import type { Area, OrbitSnapshot, Place, RequestState, Submission, TimeWindow } from '../api/types'
+import { ImagingOpportunities } from './ImagingOpportunities'
 import { TimeValue } from './TimeValue'
 import type { TaiUtcOffset } from '../time'
 import { STATUS_CLASS, STATUS_LABEL } from '../requestStatus'
@@ -11,6 +12,10 @@ interface Props {
   onOpenWorkflow: () => void
   offset: TaiUtcOffset | null
   onSelectRequest: (request: RequestState | null) => void
+  flightOrbit: OrbitSnapshot | 'missing' | 'unknown'
+  onImportOrbit: () => void
+  importBusy: boolean
+  onShowPass: (window: TimeWindow) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -27,7 +32,7 @@ function areaText(area: Area): string {
   return `W ${area.west}, S ${area.south}, E ${area.east}, N ${area.north}`
 }
 
-export function RequestPanel({ offset, onSelectRequest, selectedRequest, onOpenWorkflow }: Props) {
+export function RequestPanel({ offset, onSelectRequest, selectedRequest, onOpenWorkflow, flightOrbit, onImportOrbit, importBusy, onShowPass }: Props) {
   const [items, setItems] = useState<RequestState[]>([])
   const [listPhase, setListPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [listError, setListError] = useState('')
@@ -335,6 +340,17 @@ export function RequestPanel({ offset, onSelectRequest, selectedRequest, onOpenW
               </>
             )}
           </dl>
+          {selected.body.area && (
+            <ImagingOpportunities
+              key={`${selected.id}:${selected.body.request.revision}`}
+              area={selected.body.area}
+              flightOrbit={flightOrbit}
+              onImportOrbit={onImportOrbit}
+              importBusy={importBusy}
+              onShowPass={onShowPass}
+              offset={offset}
+            />
+          )}
           <button onClick={() => loadSubmission(selected.body.request.revision)}>
             제출 원본 조회 (revision {selected.body.request.revision})
           </button>
