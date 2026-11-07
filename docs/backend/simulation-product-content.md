@@ -35,9 +35,10 @@ owned source/index streaming, missing membership, corrupt/truncated/oversize inp
 replay and outbox rollback. These checks do not establish HTTP role enforcement or actual
 MinIO streaming for the newly added endpoints; deployed verification is recorded below.
 
-This supports viewing synthetic product bytes. A mission-qualified quicklook using an
-explicit instrument raster/packet model, quality decisions and request fulfillment remain
-part of the full backend goal.
+This supports viewing synthetic product bytes. The synthetic L0 step reuses the same
+rendering as its diagnostic quicklook with integrity-only checks and request fulfillment
+([simulation-product-l0.md](simulation-product-l0.md)). A mission-qualified quicklook using an
+explicit instrument raster/packet model remains part of the full backend goal.
 
 
 ## Deployed verification — 2026-09-12

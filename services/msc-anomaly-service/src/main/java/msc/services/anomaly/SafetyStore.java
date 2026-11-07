@@ -38,7 +38,11 @@ public final class SafetyStore {
   }
 
   public SafetyPolicy policy(String craft) {
-    return store.require("safety-policy", craft, SafetyPolicy.class).body();
+    return policyState(craft).body();
+  }
+
+  public StateStore.State<SafetyPolicy> policyState(String craft) {
+    return store.require("safety-policy", craft, SafetyPolicy.class);
   }
 
   public StateStore.State<SafetyLatch> state(String craft) {

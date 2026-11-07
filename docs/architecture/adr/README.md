@@ -16,4 +16,6 @@ These encode the supplied decisions. Technology candidates in [Open decisions](.
 - [ADR-0011 — MSA runtime and completion scope](0011-msa-runtime-and-scope.md)
 
 - [ADR-0012 — Orekit](0012-orekit.md)
+- [ADR-0013 — Priority-greedy planning proposals, not optimization](0013-priority-greedy-solver.md) (Proposed)
 - [ADR-0014 — Operator-initiated simulated ground-segment steps](0014-operator-simulated-ground-steps.md) (proposed)
+- [ADR-0015 — Kinematic rest-to-rest attitude maneuver estimates](0015-kinematic-attitude-maneuver.md)
