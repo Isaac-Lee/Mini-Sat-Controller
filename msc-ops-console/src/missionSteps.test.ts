@@ -3,7 +3,7 @@ import { buildSteps, type Ctx } from './missionSteps'
 
 afterEach(() => vi.unstubAllGlobals())
 
-const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' }
+const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' as const }
 const run = {
   id: 'run-1',
   requestId: 'req-1',
@@ -26,6 +26,7 @@ function router(nowSeconds: number) {
     if (url.includes('time/utc-to-tai') || url.includes('/internal/time')) return jsonResponse({ seconds: nowSeconds, nanos: 0, scale: 'TAI' })
     if (url.endsWith('/simulation-commit')) return jsonResponse({ id: 'd1', body: { schedule: { key: 'K', version: 1 } } })
     if (url.endsWith('/simulation-time-correlations')) return jsonResponse({ version: 7 })
+    if (url.includes('/simulation-time-correlations/')) return jsonResponse({ message: 'none' }, 404)
     if (url.endsWith('/command-loads/prepare')) return jsonResponse(load('L-img', 'cmd-img'))
     return jsonResponse({})
   })
@@ -49,7 +50,9 @@ describe('mission steps derive bodies from earlier server responses', () => {
   it('anchors the simulation clock 60 s and the approval deadline 30 s before the imaging window', async () => {
     const calls = router(0)
     const { patch } = await step('correlation').run({ ...base, schedule: { key: 'K', version: 1 } }, 'k')
-    const body = calls[0].body as { correlation: { taiEpoch: { seconds: number }; environment: string } }
+    const post = calls.find((x) => x.url.endsWith('/simulation-time-correlations'))!
+    expect((post.body as { expectedVersion: number }).expectedVersion).toBe(0)
+    const body = post.body as { correlation: { taiEpoch: { seconds: number }; environment: string } }
     expect(body.correlation.taiEpoch.seconds).toBe(start.seconds - 60)
     expect(body.correlation.environment).toBe('SIMULATION')
     expect(patch?.deadline?.seconds).toBe(start.seconds - 30)
@@ -94,6 +97,37 @@ describe('mission steps derive bodies from earlier server responses', () => {
     await step('advance-image').run(c, 'k')
     const advance = vi.mocked(fetch).mock.calls.find(([u]) => String(u).endsWith('/advance'))!
     expect(JSON.parse(String(advance[1]!.body))).toEqual({ expectedVersion: 5, targetTick: 600 + 10 * 10 })
+  })
+
+  it('reuses an existing correlation that covers the mission instead of posting version 0', async () => {
+    const calls = router(0)
+    vi.mocked(fetch).mockImplementation(async (url: string | URL | Request) => {
+      calls.push({ url: String(url), body: undefined, key: null })
+      return jsonResponse({ version: 4, body: { ticksPerSecond: 5, validInterval: { start: { seconds: start.seconds - 100 }, end: { seconds: start.seconds + 7200 } } } }) as unknown as Response
+    })
+    const { patch } = await step('correlation').run({ ...base, schedule: { key: 'K', version: 1 } }, 'k')
+    expect(patch?.correlation).toEqual({ version: 4, ticksPerSecond: 5 })
+    expect(calls.map((x) => x.url)).toEqual(['/fe-api/mission/api/simulation-time-correlations/sim-1'])
+  })
+
+  it('downlink clock and link wait for the payload allocation, which waits for an ACCEPTED dispatch', () => {
+    const dispatchedNoPlan = { ...base, scenarioId: 'S', image: load('L-img', 'cmd-img'), downlink: load('L-dl', 'cmd-dl'), booking: { id: 'b', window: {} }, downlinkDispatched: true }
+    expect(step('advance-downlink').needs(dispatchedNoPlan)).not.toBeNull()
+    expect(step('link-downlink').needs(dispatchedNoPlan)).not.toBeNull()
+    expect(step('downlink-plan').needs(dispatchedNoPlan)).toBeNull()
+    expect(step('downlink-plan').needs({ ...dispatchedNoPlan, downlinkDispatched: false })).not.toBeNull()
+    expect(step('advance-downlink').needs({ ...dispatchedNoPlan, planId: 'P' })).toBeNull()
+  })
+
+  it('does not re-publish an authority rule that already exists', async () => {
+    const calls = router(0)
+    vi.mocked(fetch).mockImplementation(async (url: string | URL | Request) => {
+      calls.push({ url: String(url), body: undefined, key: null })
+      return jsonResponse({ version: 2, body: { rules: [{ context: { actionClass: 'IMAGE', phase: 'ROUTINE', spacecraftMode: 'NOMINAL', risk: 'LOW' }, requirement: 'HUMAN_APPROVAL' }] } }) as unknown as Response
+    })
+    const { shown } = await step('authority-image').run(base, 'k')
+    expect(shown).toEqual({ unchanged: true, version: 2 })
+    expect(calls.every((x) => !x.url.endsWith('/api/authority-policies'))).toBe(true)
   })
 
   it('needs gates block steps until their inputs exist', () => {

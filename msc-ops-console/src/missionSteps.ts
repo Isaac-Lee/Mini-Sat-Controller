@@ -17,6 +17,8 @@ export interface Ctx {
   deadline?: MissionInstant
   scenarioId?: string
   links: Record<string, number>
+  imageDispatched?: boolean
+  downlinkDispatched?: boolean
   booking?: { id: string; window: any }
   downlinkOperation?: { activityId: string; schedule: { key: unknown; version: number } }
   downlink?: Prepared
@@ -65,7 +67,15 @@ async function publishRule(craft: string, actionClass: 'IMAGE' | 'DOWNLINK', key
   } catch (error) {
     if (!(error instanceof ApiError && error.kind === 'not_found')) throw error
   }
-  const rules = current ? [...current.body.rules, authorityRule(actionClass)] : [authorityRule(actionClass)]
+  const wanted = authorityRule(actionClass)
+  const same = (rule: any) => JSON.stringify(rule?.context) === JSON.stringify(wanted.context)
+  const existing = current?.body.rules.find(same)
+  if (existing) {
+    if (existing.requirement !== wanted.requirement)
+      throw new Error(`${actionClass} 권한 규칙이 이미 ${existing.requirement}로 등록되어 있어 바꾸지 않았습니다.`)
+    return { unchanged: true, version: current!.version }
+  }
+  const rules = current ? [...current.body.rules, wanted] : [wanted]
   const policy = current ? { ...current.body, rules } : { spacecraftId: craft, missionDefinitionVersion: MD, rules, provenance: PROVENANCE }
   return actionsApi.publishAuthority({ expectedVersion: current?.version ?? 0, policy }, key)
 }
@@ -123,11 +133,23 @@ export function buildSteps(requestId: string, review: string, bookingId: string)
       run: async (c, key) => {
         const start = c.candidate!.activity.window.start as MissionInstant
         const epoch = seconds(start, -60)
+        const deadline = seconds(start, -30)
+        // One correlation per craft: reuse it when it already covers this mission (imaging through
+        // the downlink an hour later), otherwise replace it with CAS on its current version.
+        let current: Awaited<ReturnType<typeof actionsApi.currentCorrelation>> | null = null
+        try {
+          current = await actionsApi.currentCorrelation(c.run!.spacecraftId)
+        } catch (error) {
+          if (!(error instanceof ApiError && error.kind === 'not_found')) throw error
+        }
+        const interval = current?.body.validInterval
+        if (current && interval && interval.start.seconds <= epoch.seconds && interval.end.seconds >= start.seconds + 3600)
+          return { patch: { correlation: { version: current.version, ticksPerSecond: current.body.ticksPerSecond }, deadline }, shown: { reused: true, version: current.version } }
         const r = await actionsApi.correlation({
-          expectedVersion: 0,
+          expectedVersion: current?.version ?? 0,
           correlation: { spacecraftId: c.run!.spacecraftId, missionDefinitionVersion: MD, timeCorrelationId: 'simulation-time', clockPartition: MD, taiEpoch: epoch, tickEpoch: 0, ticksPerSecond: 10, validInterval: { start: epoch, end: seconds(start, 3600) }, environment: 'SIMULATION', approvalReference: review, provenance: PROVENANCE },
         }, key)
-        return { patch: { correlation: { version: r.version, ticksPerSecond: 10 }, deadline: seconds(start, -30) }, shown: r }
+        return { patch: { correlation: { version: r.version, ticksPerSecond: 10 }, deadline }, shown: r }
       },
     },
     {
@@ -171,10 +193,13 @@ export function buildSteps(requestId: string, review: string, bookingId: string)
     },
     {
       id: 'dispatch-image', title: '시뮬레이터로 전달 (simulation-dispatch)', repeatable: true, needs: (c) => (c.scenarioId && c.image ? null : '방출 후'),
-      run: async (c) => ({ shown: await actionsApi.dispatch(c.image!.id) }),
+      run: async (c) => {
+        const r = await actionsApi.dispatch(c.image!.id)
+        return { patch: { imageDispatched: r.body.status === 'ACCEPTED' }, shown: r }
+      },
     },
     {
-      id: 'advance-image', title: '가상 시계를 촬영 완료까지 진행', admin: true, needs: (c) => (c.scenarioId && c.image ? null : '전달 후'),
+      id: 'advance-image', title: '가상 시계를 촬영 완료까지 진행', admin: true, needs: (c) => (c.imageDispatched ? null : '전달(ACCEPTED) 후'),
       run: async (c, key) => ({ shown: await advanceThrough(c, c.image!, imageCatalog(c), key) }),
     },
     {
@@ -232,10 +257,13 @@ export function buildSteps(requestId: string, review: string, bookingId: string)
     },
     {
       id: 'dispatch-downlink', title: '다운링크 명령 전달', repeatable: true, needs: (c) => (c.downlink && c.scenarioId ? null : '방출 후'),
-      run: async (c) => ({ shown: await actionsApi.dispatch(c.downlink!.id) }),
+      run: async (c) => {
+        const r = await actionsApi.dispatch(c.downlink!.id)
+        return { patch: { downlinkDispatched: r.body.status === 'ACCEPTED' }, shown: r }
+      },
     },
     {
-      id: 'downlink-plan', title: '합성 촬영 데이터를 예약에 할당 (다운링크 시작 전)', needs: (c) => (c.downlink && c.image && c.booking ? null : '전달 후'),
+      id: 'downlink-plan', title: '합성 촬영 데이터를 예약에 할당 (다운링크 시작 전)', needs: (c) => (c.downlinkDispatched && c.image && c.booking ? null : '다운링크 전달(ACCEPTED) 후'),
       run: async (c, key) => {
         const r = await actionsApi.downlinkPlan(c.booking!.id, { scenarioId: c.scenarioId!, loadId: c.downlink!.id, commandId: c.downlink!.body.load.commands[0].id.value, imagingCommandId: c.image!.body.load.commands[0].id.value }, key)
         return { patch: { planId: r.id }, shown: r }
@@ -249,11 +277,11 @@ export function buildSteps(requestId: string, review: string, bookingId: string)
       },
     },
     {
-      id: 'link-downlink', title: '시뮬레이션 링크 연결 (다운링크 명령)', admin: true, needs: (c) => (c.downlink && c.scenarioId ? null : '전달 후'),
+      id: 'link-downlink', title: '시뮬레이션 링크 연결 (다운링크 명령)', admin: true, needs: (c) => (c.planId ? null : '합성 데이터 할당 후 (할당 전 진행하면 할당 불가)'),
       run: (c, key) => setLink(c, c.downlink!.id, true, key),
     },
     {
-      id: 'advance-downlink', title: '가상 시계를 다운링크 완료까지 진행', admin: true, needs: (c) => (c.downlink && c.scenarioId ? null : '전달 후'),
+      id: 'advance-downlink', title: '가상 시계를 다운링크 완료까지 진행', admin: true, needs: (c) => (c.planId ? null : '합성 데이터 할당 후 (할당 전 진행하면 할당 불가)'),
       run: async (c, key) => ({ shown: await advanceThrough(c, c.downlink!, downlinkCatalog(c), key) }),
     },
     {

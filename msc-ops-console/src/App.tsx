@@ -410,11 +410,11 @@ export default function App() {
         </main>
       )}
 
-      {tab === 'actions' && (
-        <main className="layout single" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions">
-          <MissionActionsPanel selectedRequest={selectedRequest} />
-        </main>
-      )}
+      {/* Kept mounted (hidden) so switching to 승인·안전 mid-flow keeps the step progress; a new
+          request starts a fresh flow. */}
+      <main className="layout single" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden={tab !== 'actions'}>
+        <MissionActionsPanel key={selectedRequest?.id ?? 'none'} selectedRequest={selectedRequest} />
+      </main>
 
       {tab === 'product' && (
         <main className="layout single" id="panel-product" role="tabpanel" aria-labelledby="tab-product">

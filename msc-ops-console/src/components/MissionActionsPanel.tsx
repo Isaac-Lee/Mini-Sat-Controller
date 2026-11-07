@@ -9,6 +9,16 @@ import { buildSteps, problem, type Ctx, type Step } from '../missionSteps'
 // commands hardware. Each step is one explicit operator click; outcomes are shown as the server
 // returned them (UNKNOWN stays UNKNOWN).
 
+// The server's own status/belief is the headline; only ACCEPTED / OBSERVED / confirmed effects (or
+// a reply without such a field) count as success. UNKNOWN or REJECTED is never shown as done.
+function verdict(shown: unknown): { ok: boolean; label: string } {
+  const value = shown as { belief?: string; reason?: string; body?: { status?: string } } | null
+  const status = value?.belief ?? value?.body?.status
+  if (!status) return { ok: true, label: '응답 수신' }
+  const ok = ['ACCEPTED', 'OBSERVED', 'SIMULATION_EFFECTS_CONFIRMED'].includes(status)
+  return { ok, label: value?.reason ? `${status} (${value.reason})` : status }
+}
+
 type Outcome = { state: 'busy' } | { state: 'done'; shown: unknown } | { state: 'error'; message: string }
 
 export function MissionActionsPanel({ selectedRequest }: { selectedRequest: RequestState | null }) {
@@ -82,7 +92,9 @@ export function MissionActionsPanel({ selectedRequest }: { selectedRequest: Requ
               {outcome?.state === 'error' && <div className="status-error" role="alert">{outcome.message}</div>}
               {done && (
                 <details>
-                  <summary className="status-ok">완료 — 서버 응답 보기</summary>
+                  <summary className={verdict(outcome.shown).ok ? 'status-ok' : 'status-warn'}>
+                    서버 응답: {verdict(outcome.shown).label} (펼쳐서 보기)
+                  </summary>
                   <pre className="mono">{JSON.stringify(outcome.shown, null, 2)}</pre>
                 </details>
               )}

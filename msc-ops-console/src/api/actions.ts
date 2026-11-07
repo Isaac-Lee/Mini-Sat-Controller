@@ -31,6 +31,8 @@ export const actionsApi = {
   commitDownlink: (run: string, body: { bookingId: string; window: unknown; expectedScheduleVersion: number; reviewReference: string }, key: string) =>
     post<{ id: string; body: { activityId: string; schedule: { key: unknown; version: number } } }>('planning', `/api/planning/runs/${id(run)}/simulation-downlink`, body, key),
 
+  currentCorrelation: (craft: string) =>
+    get<{ version: number; body: { ticksPerSecond: number; validInterval: { start: MissionInstant; end: MissionInstant } } }>('mission', `/api/simulation-time-correlations/${id(craft)}`),
   correlation: (body: Json, key: string) => post<{ version: number; body: { ticksPerSecond: number } }>('mission', '/api/simulation-time-correlations', body, key),
   authorityPolicy: (craft: string) => get<{ version: number; body: Json & { rules: Json[] } }>('mission', `/api/authority-policies/${id(craft)}`),
   publishAuthority: (body: Json, key: string) => post('mission', '/api/authority-policies', body, key),
