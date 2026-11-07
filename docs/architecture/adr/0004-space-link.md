@@ -17,9 +17,11 @@ No CCSDS dependency or implementation is added. Architecture tests forbid planni
 ## Notes
 
 2026-11-07: `CommandReleaseGate` (spacecraft-control service) is now the only caller of
-`SpacecraftLinkPort`. It refuses any non-allowed `CommandReleasePolicy.Decision` or a load whose
-binding differs from the checked one, commits durable intent before `transmit`, and classifies an
-uncertain transfer as UNCONFIRMED for receiver-side reconciliation. The only adapter,
+`SpacecraftLinkPort` (a convention; no architecture test enforces it yet). It refuses any
+non-allowed `CommandReleasePolicy.Decision` or a load whose binding differs from the checked one,
+commits durable intent before `transmit`, and classifies transport uncertainty as UNCONFIRMED for
+receiver-side reconciliation. Adapter validation failures (for example a mismatched ledger)
+propagate after intent is committed; the next dispatch re-observes the receiver first. The only adapter,
 `SimulationSpacecraftLink`, is SIMULATION: it posts the released JSON submission to the Simulator
 service. It is **not CCSDS** — no frames, APIDs, transfer protocol or RF. CCSDS stays behind this
 port and must not be added without conformance vectors. The V1 simulation decision is built from

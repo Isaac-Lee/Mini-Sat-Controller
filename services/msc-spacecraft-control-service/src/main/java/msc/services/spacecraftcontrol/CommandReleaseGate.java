@@ -9,10 +9,13 @@ import msc.domain.spacecraftcontrol.TransmissionRecord;
 import msc.ports.SpacecraftLinkPort;
 
 /**
- * The only caller of {@link SpacecraftLinkPort}. A refused {@link Decision} never reaches the link.
- * An allowed one records durable intent before any outbound I/O, and every transmit ends as
- * confirmed evidence or as UNCONFIRMED, which the caller must reconcile from the receiving side
- * before another attempt. The gate owns ordering, not storage or owner reads.
+ * The only intended caller of {@link SpacecraftLinkPort} (by convention; not enforced by a test).
+ * A refused {@link Decision} never reaches the link. An allowed one records durable intent before
+ * any outbound I/O. Transport uncertainty ends as UNCONFIRMED, which the caller must reconcile
+ * from the receiving side before another attempt; adapter validation failures propagate after the
+ * intent is committed, leaving the attempt record for reconciliation. The gate owns ordering, not
+ * storage or owner reads: the caller must derive the Decision from current owner checks or
+ * {@link msc.domain.spacecraftcontrol.CommandReleasePolicy}, since the gate cannot verify it.
  */
 final class CommandReleaseGate {
   /** Thrown by a link adapter when the transfer may or may not have reached the receiver. */
@@ -41,6 +44,9 @@ final class CommandReleaseGate {
       Runnable recordIntent,
       SpacecraftLinkPort link) {
     Objects.requireNonNull(load);
+    Objects.requireNonNull(checked);
+    Objects.requireNonNull(decision);
+    Objects.requireNonNull(recordIntent);
     Objects.requireNonNull(link);
     var reasons = EnumSet.noneOf(Reason.class);
     reasons.addAll(decision.reasons());
