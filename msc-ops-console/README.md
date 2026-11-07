@@ -10,6 +10,20 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 기존 BE 서비스 및 포워딩, 저장소 루트의 `.local/msa.env`가 필요합니다.
+
+백엔드·DB 없이 화면만 둘러보려면 데모 모드로 엽니다.
+
+```sh
+npm install
+npm run demo   # http://127.0.0.1:5173/?demo
+```
+
+데모 모드에서는 브라우저 안의 가짜 백엔드(`src/demo/backend.ts`)가 모든 API에 응답하고 네트워크로는
+아무 요청도 보내지 않습니다. 실제 화면을 그대로 쓰므로 요청 제출·수정·취소, 궤도 가져오기·예측,
+임무 흐름 근거, 2인 복구 승인, 제품 조회를 눌러볼 수 있습니다. 새 요청은 몇 초 간격으로
+RECEIVED → ACCEPTED → SCHEDULED → FULFILLED로 진행하고, `중구`처럼 여러 곳이 일치하는 지명은
+CLARIFICATION_NEEDED가 됩니다. 상단의 "서비스 호출 기록"은 각 클릭이 어느 서비스 API에 닿는지
+보여줍니다. 모든 값은 합성이며 새로고침하면 처음 상태로 돌아갑니다.
 [화면별 사용 안내와 검증 범위](../docs/frontend/functional-tour.md)를 먼저 읽으세요.
 
 ```sh

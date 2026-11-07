@@ -52,7 +52,7 @@ function stubTasking(state: ReturnType<typeof requestState>, reviseResponse = js
 }
 
 function renderPanel() {
-  render(<RequestPanel demoMode={false} offset={null} onSelectRequest={() => {}} selectedRequest={null} onOpenWorkflow={() => {}} />)
+  render(<RequestPanel offset={null} onSelectRequest={() => {}} selectedRequest={null} onOpenWorkflow={() => {}} />)
 }
 
 async function openRequest() {

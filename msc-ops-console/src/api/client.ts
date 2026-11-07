@@ -1,3 +1,5 @@
+import { demoFetch } from '../demo/backend'
+
 export type ApiErrorKind = 'auth' | 'not_found' | 'conflict' | 'connection' | 'invalid' | 'unknown'
 
 export class ApiError extends Error {
@@ -19,10 +21,18 @@ function kindForStatus(status: number): ApiErrorKind {
   return 'unknown'
 }
 
+// Demo mode answers every request from the in-browser fake backend and never touches the network,
+// so a demo can neither read live data nor fall back to it.
+let demoBackend = false
+export function setDemoBackend(on: boolean) {
+  demoBackend = on
+}
+export const isDemoBackend = () => demoBackend
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, init)
+    res = demoBackend ? await demoFetch(path, init) : await fetch(path, init)
   } catch {
     throw new ApiError('connection', '개발 프록시 또는 백엔드 서비스에 연결할 수 없습니다.')
   }

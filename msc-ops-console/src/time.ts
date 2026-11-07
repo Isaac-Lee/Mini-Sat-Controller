@@ -28,16 +28,13 @@ export interface TaiUtcOffsetState {
 // TAI and UTC seconds advance in lockstep except across an announced leap second, so this
 // offset is only trustworthy for instants close in time to when it was captured (see the same
 // caveat already used for ground-track playback in App.tsx).
-// `enabled=false` (demo mode) must never call the backend — every panel is required to show only
-// fixture data with no live fallback while demo mode is on.
-export function useTaiUtcOffset(enabled: boolean): TaiUtcOffsetState {
+export function useTaiUtcOffset(): TaiUtcOffsetState {
   const [offset, setOffset] = useState<TaiUtcOffset | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    if (!enabled) return
     let cancelled = false
     async function fetchOffset() {
       setLoading(true)
@@ -59,12 +56,12 @@ export function useTaiUtcOffset(enabled: boolean): TaiUtcOffsetState {
     return () => {
       cancelled = true
     }
-  }, [tick, enabled])
+  }, [tick])
 
   return {
-    offset: enabled ? offset : null,
-    loading: enabled && loading,
-    error: enabled ? error : null,
+    offset,
+    loading,
+    error,
     refresh: () => setTick((t) => t + 1),
   }
 }

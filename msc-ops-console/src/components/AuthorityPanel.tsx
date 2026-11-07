@@ -12,11 +12,10 @@ function errorMessage(error: unknown): string {
 
 interface Props {
   initialSpacecraftId?: string
-  demoMode: boolean
   offset: TaiUtcOffset | null
 }
 
-export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-spaceeye-t1' }: Props) {
+export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1' }: Props) {
   const [spacecraftId, setSpacecraftId] = useState(initialSpacecraftId)
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'not_found' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
@@ -53,7 +52,6 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
   }
 
   async function loadLatch() {
-    if (demoMode) return
     const epoch = ++selectionEpoch.current
     setLatch(null)
     setPhase('loading')
@@ -93,7 +91,6 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
   }
 
   async function loadIncidents() {
-    if (demoMode) return
     try {
       setIncidents(await anomalyApi.incidents(20))
     } catch {
@@ -103,18 +100,16 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
 
   useEffect(() => {
     const epochRef = selectionEpoch
-    if (!demoMode) {
-      loadLatch()
-      loadIncidents()
-    }
+    loadLatch()
+    loadIncidents()
     return () => { epochRef.current++ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode])
+  }, [])
 
   // Deliberately manual: /check has a side effect (may latch a new incident / emit events), so it
   // must never be polled automatically.
   async function runCheck() {
-    if (demoMode || !latch || latch.id !== spacecraftId || checkBusy || recoveryBusy) return
+    if (!latch || latch.id !== spacecraftId || checkBusy || recoveryBusy) return
     const epoch = selectionEpoch.current
     setCheckBusy(true)
     setCheckError('')
@@ -132,7 +127,7 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
   }
 
   async function requestRecovery() {
-    if (demoMode || !latch || latch.id !== spacecraftId || !decisionReference.trim() || checkBusy || recoveryBusy) return
+    if (!latch || latch.id !== spacecraftId || !decisionReference.trim() || checkBusy || recoveryBusy) return
     const epoch = selectionEpoch.current
     const wasFrozen = latch.body.frozen
     const priorApprovals = latch.body.approvals.length
@@ -179,16 +174,6 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
     } finally {
       if (epoch === selectionEpoch.current) setRecoveryBusy(false)
     }
-  }
-
-  if (demoMode) {
-    return (
-      <section className="panel-block">
-        <h2>승인 · 안전</h2>
-        <div className="demo-banner">데모 모드 — 실제 안전 상태가 아닙니다.</div>
-        <div className="status-ok">동결 없음 (데모)</div>
-      </section>
-    )
   }
 
   return (

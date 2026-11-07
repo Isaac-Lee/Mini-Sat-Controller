@@ -6,15 +6,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('MonitorPanel demo/live boundary', () => {
-  it('never calls fetch in demo mode (no silent live fallback)', () => {
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    render(<MonitorPanel demoMode={true} offset={null} />)
-    expect(screen.getByText(/데모 모드/)).toBeInTheDocument()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
+describe('MonitorPanel', () => {
   it('shows a distinct "binding not registered" message on 404, not a fabricated estimate', async () => {
     vi.stubGlobal(
       'fetch',
@@ -25,7 +17,7 @@ describe('MonitorPanel demo/live boundary', () => {
         json: async () => ({}),
       }),
     )
-    render(<MonitorPanel demoMode={false} offset={null} />)
+    render(<MonitorPanel offset={null} />)
     await waitFor(() => expect(screen.getByText(/관측 바인딩 미등록/)).toBeInTheDocument())
   })
 
@@ -72,7 +64,7 @@ describe('MonitorPanel demo/live boundary', () => {
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, status: 200, statusText: 'OK', json: async () => body }),
     )
-    render(<MonitorPanel demoMode={false} offset={null} />)
+    render(<MonitorPanel offset={null} />)
     await waitFor(() => expect(screen.getByText(/FRESH/)).toBeInTheDocument())
     expect(screen.getByText(/NOMINAL/)).toBeInTheDocument()
   })

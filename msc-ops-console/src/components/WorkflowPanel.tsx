@@ -76,12 +76,12 @@ function RequestWorkflow({ selected, offset, onInspectCraft }: { selected: Reque
     <section><h2>3. 결과 검토</h2><p>제품 탭에서 요청에 귀속된 합성 원본·진단 PNG와 해시를 확인합니다. FULFILLED라도 물리 영상 품질을 평가한 결과는 아닙니다.</p></section>
   </>
 }
-export function WorkflowPanel({ demoMode, selectedRequest, offset, onInspectCraft = () => {} }: { demoMode: boolean; selectedRequest: RequestState | null; offset: TaiUtcOffset | null; onInspectCraft?: (craft: string, safety: boolean) => void }) {
+export function WorkflowPanel({ selectedRequest, offset, onInspectCraft = () => {} }: { selectedRequest: RequestState | null; offset: TaiUtcOffset | null; onInspectCraft?: (craft: string, safety: boolean) => void }) {
   const [revision, setRevision] = useState(0)
   return <div className="workflow-panel">
     <h1>임무 흐름 · 실제 저장 근거</h1>
     <p>요청부터 합성 결과까지 각 서비스가 무엇을 맡는지 확인합니다.</p>
-    {demoMode ? <p className="demo-banner">데모 모드 — 서버 근거를 조회하지 않습니다. 전체 서비스 탭에서 역할 설명을 볼 수 있습니다.</p> : selectedRequest ? <>
+    {selectedRequest ? <>
       <button onClick={() => setRevision((value) => value + 1)}>흐름 새로고침</button>
       <RequestWorkflow key={`${selectedRequest.id}:${revision}`} selected={selectedRequest} offset={offset} onInspectCraft={onInspectCraft} />
     </> : <p className="hint">요청 탭에서 요청을 선택하세요. FULFILLED 요청을 선택하면 저장된 전체 실행 흐름을 확인할 수 있습니다.</p>}

@@ -5,7 +5,6 @@ import type { TaiUtcOffset } from '../time'
 import { TimeValue } from './TimeValue'
 
 interface Props {
-  demoMode: boolean
   requestId: string | null
   offset: TaiUtcOffset | null
 }
@@ -103,14 +102,12 @@ function RequestResult({ requestId, offset }: { requestId: string; offset: TaiUt
   )
 }
 
-export function ProductPanel({ demoMode, requestId, offset }: Props) {
+export function ProductPanel({ requestId, offset }: Props) {
   return (
     <section className="panel-block product-panel">
       <h2>제품 · 합성 결과</h2>
       <p className="hint">SIMULATION V1 완료는 합성 실행·다운링크·제품 출처의 연결을 뜻합니다. 실제 위성 영상이나 물리 영상 품질·AOI 커버리지 충족을 의미하지 않습니다.</p>
-      {demoMode ? (
-        <div className="demo-banner">데모 모드 — 실제 결과와 다운로드는 조회하지 않습니다. 요청을 선택하고 데모 모드를 끄면 서버 결과를 볼 수 있습니다.</div>
-      ) : requestId ? (
+      {requestId ? (
         <RequestResult key={requestId} requestId={requestId} offset={offset} />
       ) : (
         <p className="hint">요청 탭에서 요청을 선택하면 등록된 합성 결과를 조회합니다.</p>

@@ -22,13 +22,12 @@ function errorMessage(error: unknown): string {
 }
 
 interface Props {
-  demoMode: boolean
   offset: TaiUtcOffset | null
   selectedRequest: RequestState | null
   flightOrbit: OrbitSnapshot | 'missing' | 'unknown'
 }
 
-export function TimelinePanel({ demoMode, offset, selectedRequest, flightOrbit }: Props) {
+export function TimelinePanel({ offset, selectedRequest, flightOrbit }: Props) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [prediction, setPrediction] = useState<AccessPrediction | null>(null)
@@ -42,7 +41,7 @@ export function TimelinePanel({ demoMode, offset, selectedRequest, flightOrbit }
   const area = selectedRequest?.body.area ?? null
 
   useEffect(() => {
-    if (demoMode || !selectedRequest) {
+    if (!selectedRequest) {
       setIntake(null)
       setIntakePhase('idle')
       return
@@ -65,7 +64,7 @@ export function TimelinePanel({ demoMode, offset, selectedRequest, flightOrbit }
         setIntake(null)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode, selectedRequest?.id])
+  }, [selectedRequest?.id])
 
   async function loadAttempt(attemptId: string) {
     setAttemptError('')
@@ -107,21 +106,6 @@ export function TimelinePanel({ demoMode, offset, selectedRequest, flightOrbit }
     } finally {
       setBusy(false)
     }
-  }
-
-  if (demoMode) {
-    return (
-      <section className="panel-block">
-        <h2>타임라인</h2>
-        <div className="demo-banner">데모 모드 — 아래는 가상의 확정 스케줄 예시입니다(실제 아님).</div>
-        <ol className="request-status-axis">
-          <li className="status-ok">RECEIVED</li>
-          <li className="status-ok">ACCEPTED</li>
-          <li className="status-ok">SCHEDULED (데모)</li>
-          <li>FULFILLED</li>
-        </ol>
-      </section>
-    )
   }
 
   return (
