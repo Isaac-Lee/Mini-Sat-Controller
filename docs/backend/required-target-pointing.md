@@ -4,6 +4,8 @@ Flight Dynamics resolves an owned orbit by ID, computes a sampled required line-
 profile and stores an immutable result. The [geometry contract](required-target-pointing-geometry.md)
 defines the frames, angle conventions and sampling limits. This API does not establish
 actual spacecraft attitude, sensor coverage or overall planning feasibility.
+[Attitude maneuver estimates](attitude-maneuver-estimates.md) consume stored samples for a
+kinematic rest-to-rest slew-time bound; that is not attitude feasibility either.
 
 ## Requests and ownership
 
