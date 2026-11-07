@@ -21,7 +21,8 @@ attempt to the simulator through `ServiceHttp`:
 
 - spacecraft-control: `POST /api/command-loads/{id}/simulation-reception` (TT&C reception of a
   released load).
-- ground-operations: downlink plan and downlink reception (separate change).
+- ground-operations: `POST /api/bookings/{id}/simulation-downlink-plan` (payload ID derived
+  server-side) and `POST /api/simulation-downlinks/{planId}/receive`.
 
 Each relay refuses anything that is not a SIMULATION release/scenario, returns the simulator's
 answer unchanged (including `UNKNOWN` with its reason), never manufactures evidence, and scopes
