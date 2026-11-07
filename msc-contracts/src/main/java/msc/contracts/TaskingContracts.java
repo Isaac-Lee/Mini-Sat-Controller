@@ -129,7 +129,11 @@ public final class TaskingContracts {
       String acquisitionReference,
       double unionCoverageFraction,
       double cloudFraction,
-      String assessmentReference) {
+      String assessmentReference,
+      // Nullable for pre-L0 producers; INTEGRITY_ONLY_SYNTHETIC means coverage/cloud are
+      // simulation-declared, never measured from imagery.
+      String scope,
+      String environment) {
     public QualityEvidence {
       text(requestId);
       text(productReference);
