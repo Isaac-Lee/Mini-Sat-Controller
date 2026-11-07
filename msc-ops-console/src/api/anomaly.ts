@@ -1,5 +1,5 @@
 import { request } from './client'
-import type { AnomalyState, IncidentView, RecoveryResult, SafetyCheck, SafetyLatchState } from './types'
+import type { AnomalyState, IncidentView, RecoveryResult, SafetyCheck, SafetyLatchState, SafetyPolicy } from './types'
 
 const ANOMALY = '/fe-api/anomaly'
 
@@ -14,6 +14,10 @@ function actorHeaders(actor: OperatorActor): HeadersInit {
 
 export const anomalyApi = {
   latch: (craft: string) => request<SafetyLatchState>(`${ANOMALY}/api/safety/${encodeURIComponent(craft)}`),
+
+  // Active policy, including how many recovery approvals unfreeze the latch (404 when unconfigured).
+  policy: (craft: string) =>
+    request<{ id: string; version: number; body: SafetyPolicy }>(`${ANOMALY}/api/safety-policies/${encodeURIComponent(craft)}`),
 
   // Every stored latch version, oldest first (StateStore.history ORDER BY version).
   history: (craft: string) =>

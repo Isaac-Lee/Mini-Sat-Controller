@@ -33,6 +33,8 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
   const [incidents, setIncidents] = useState<AnomalyState[]>([])
   const [history, setHistory] = useState<SafetyLatchState[] | null>(null)
   const [historyError, setHistoryError] = useState('')
+  // null: not loaded; number: policy's recoveryApprovals; string: why it is unknown.
+  const [required, setRequired] = useState<number | string | null>(null)
   const selectionEpoch = useRef(0)
 
   function selectSpacecraft(value: string) {
@@ -49,6 +51,7 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
     setDecisionReference('')
     setHistory(null)
     setHistoryError('')
+    setRequired(null)
   }
 
   async function loadLatch() {
@@ -65,7 +68,7 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
       if (result.id !== spacecraftId) throw new Error('Safety response spacecraft mismatch')
       setLatch(result)
       setPhase('ready')
-      await loadHistory(epoch)
+      await Promise.all([loadHistory(epoch), loadPolicy(epoch)])
     } catch (error) {
       if (epoch !== selectionEpoch.current) return
       if (error instanceof ApiError && error.kind === 'not_found') setPhase('not_found')
@@ -74,6 +77,19 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
         setErrorText(errorMessage(error))
       }
       setLatch(null)
+    }
+  }
+
+  async function loadPolicy(epoch: number) {
+    setRequired(null)
+    try {
+      const policy = await anomalyApi.policy(spacecraftId)
+      if (epoch !== selectionEpoch.current) return
+      const n = policy.body?.recoveryApprovals
+      setRequired(policy.id === spacecraftId && Number.isSafeInteger(n) && n > 0 ? n : '정책 응답이 올바르지 않습니다')
+    } catch (error) {
+      if (epoch !== selectionEpoch.current) return
+      setRequired(error instanceof ApiError && error.kind === 'not_found' ? '정책 미설정' : '정책 조회 실패: ' + errorMessage(error))
     }
   }
 
@@ -154,7 +170,7 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
         const gained = result.state.body.approvals.length - priorApprovals
         setRecoveryMessage(
           gained > 0
-            ? `승인 1건 기록됨 — 동결은 아직 유지 중입니다 (현재 기록된 승인 ${result.state.body.approvals.length}건, 필요 인원은 서버가 노출하지 않아 표시 불가). ` +
+            ? `승인 1건 기록됨 — 동결은 아직 유지 중입니다 (현재 기록된 승인 ${result.state.body.approvals.length}건, ${typeof required === 'number' ? `필요 ${required}명` : '필요 인원 확인 불가'}). ` +
                 '이 버튼은 실제 운용 승인을 완료하지 않았습니다.'
             : '이 행위자(actor)는 이미 승인을 기록했습니다 — 추가로 반영된 것은 없습니다. 동결이 유지 중입니다.',
         )
@@ -211,6 +227,14 @@ export function AuthorityPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1'
             <dt>generation / policyVersion</dt>
             <dd>
               {latch.body.generation} / {latch.body.policyVersion}
+            </dd>
+            <dt>필요 복구 승인 인원 (안전 정책)</dt>
+            <dd>
+              {required === null
+                ? '조회 중...'
+                : typeof required === 'number'
+                  ? `${required}명 중 ${latch.body.approvals.length}명 승인 기록됨`
+                  : required}
             </dd>
             <dt>기록된 승인</dt>
             <dd>
