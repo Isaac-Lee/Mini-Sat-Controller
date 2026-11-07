@@ -283,7 +283,9 @@ function demoFootprint(evaluationId: string, now: number) {
     widthMeters,
     heightMeters,
   }
-  const offset = evaluationId.endsWith('-1') ? -1 : 1
+  // One row per evaluated candidate, ordered as the camera route lists them, so two overlays never coincide.
+  const evaluated = candidates(requestFor(owner(evaluationId), now).r).filter((c) => c.feasibility.feasible)
+  const offset = evaluated.findIndex((c) => c.id.value.replace('~cand-', '~fp-') === evaluationId) === 0 ? -1 : 1
   const samples = [-2, -1, 0, 1, 2].map((k) => {
     const e = k * widthMeters * 0.15
     const n = offset * heightMeters * 0.1

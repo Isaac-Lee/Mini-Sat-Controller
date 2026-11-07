@@ -7,6 +7,18 @@ import type { MissionInstant } from './api/types'
 // never derives UTC itself (docs/architecture/time-model.md). The single "now" offset below is
 // kept only for ground-track playback animation, which labels itself approximate.
 
+// GP epochs come as ISO UTC with or without a trailing Z (Flight Dynamics accepts both).
+export function epochUtcMs(epochUtc: string): number {
+  return Date.parse(epochUtc.endsWith('Z') ? epochUtc : epochUtc + 'Z')
+}
+
+// Flight Dynamics rejects any horizon end beyond ±7 days of the GP epoch, so the bounds are
+// rounded inwards to whole seconds before conversion (start up, end down).
+const EPOCH_VALIDITY_MS = 7 * 86_400_000
+export function epochValidityMs(epochMs: number): [number, number] {
+  return [Math.ceil((epochMs - EPOCH_VALIDITY_MS) / 1000) * 1000, Math.floor((epochMs + EPOCH_VALIDITY_MS) / 1000) * 1000]
+}
+
 export function formatTai(instant: MissionInstant): string {
   const frac = String(instant.nanos).padStart(9, '0')
   return `${instant.seconds}.${frac} TAI`

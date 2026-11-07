@@ -15,7 +15,7 @@ import { AuthorityPanel } from './components/AuthorityPanel'
 import { OverviewPanel, type ConsoleTab } from './components/OverviewPanel'
 import { WorkflowPanel } from './components/WorkflowPanel'
 import { ProductPanel } from './components/ProductPanel'
-import { useTaiUtcOffset } from './time'
+import { epochUtcMs, epochValidityMs, useTaiUtcOffset } from './time'
 import './App.css'
 
 const NORAD_ID = 63229
@@ -193,13 +193,16 @@ export default function App() {
       const nowUtc = utcNoZ(nowMs)
       // Flight Dynamics only predicts within ±7 days of the GP epoch, so the margin around a late
       // pass is clipped to that interval.
-      const epochMs = Date.parse(flightOrbit.elements.epochUtc + 'Z')
+      const [validFrom, validTo] = epochValidityMs(epochUtcMs(flightOrbit.elements.epochUtc))
       const [nowTai, laterTai, epochStartTai, epochEndTai] = (
-        await api.convertUtc([nowUtc, utcNoZ(nowMs + 3 * 60 * 60 * 1000), utcNoZ(epochMs - 7 * 86_400_000), utcNoZ(epochMs + 7 * 86_400_000)])
+        await api.convertUtc([nowUtc, utcNoZ(nowMs + 3 * 60 * 60 * 1000), utcNoZ(validFrom), utcNoZ(validTo)])
       ).conversions.map((c) => c.tai)
       const margin = 15 * 60
-      const start = target ? { ...target.start, seconds: Math.max(target.start.seconds - margin, epochStartTai.seconds) } : nowTai
-      const end = target ? { ...target.end, seconds: Math.min(target.end.seconds + margin, epochEndTai.seconds) } : laterTai
+      // A clipped bound takes the converted limit whole (nanos included), never limit seconds + pass nanos.
+      const before = target && { ...target.start, seconds: target.start.seconds - margin }
+      const after = target && { ...target.end, seconds: target.end.seconds + margin }
+      const start = before ? (before.seconds < epochStartTai.seconds ? epochStartTai : before) : nowTai
+      const end = after ? (after.seconds >= epochEndTai.seconds ? epochEndTai : after) : laterTai
       const key = newIdempotencyKey()
       const manifestResult = await api.predict(flightOrbit.id, { start, end }, target ? 10 : 60, key)
       const doc = await api.samples(manifestResult.body.id)

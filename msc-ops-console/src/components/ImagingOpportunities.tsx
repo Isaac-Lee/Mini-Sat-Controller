@@ -3,6 +3,7 @@ import { api, newIdempotencyKey } from '../api/client'
 import type { Area, OrbitSnapshot, TimeWindow } from '../api/types'
 import { apiProblem } from '../api/workflow'
 import { TimeValue } from './TimeValue'
+import { epochUtcMs, epochValidityMs } from '../time'
 
 // Same point-imaging query as the timeline tab, over up to a week: a ~500 km sun-synchronous
 // satellite with a 30° off-nadir limit revisits a mid-latitude point only every few days.
@@ -11,7 +12,6 @@ const HORIZON_MS = 7 * DAY_MS
 // Flight Dynamics limits (OrekitAccessPredictor): one access search covers at most 24 h, and both
 // ends must lie within ±7 days of the GP epoch. Longer horizons are split and clipped to fit.
 const MAX_SEARCH_MS = DAY_MS
-const EPOCH_VALIDITY_MS = 7 * DAY_MS
 const CRITERIA = { minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
 // ponytail: results are reused for an hour per orbit and AOI, so tab switches do not store a new
 // Flight Dynamics prediction each time; past windows stay listed until the entry expires.
@@ -37,8 +37,9 @@ const utcNoZ = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, '')
 
 /** [start, end) UTC ms ranges of at most 24 h covering now..now+7d inside the epoch validity. */
 export function searchRanges(fromMs: number, epochMs: number): Array<[number, number]> {
-  const start = Math.max(fromMs, epochMs - EPOCH_VALIDITY_MS)
-  const end = Math.min(fromMs + HORIZON_MS, epochMs + EPOCH_VALIDITY_MS)
+  const [validFrom, validTo] = epochValidityMs(epochMs)
+  const start = Math.max(Math.ceil(fromMs / 1000) * 1000, validFrom)
+  const end = Math.min(fromMs + HORIZON_MS, validTo)
   const ranges: Array<[number, number]> = []
   for (let s = start; s < end; s += MAX_SEARCH_MS) ranges.push([s, Math.min(s + MAX_SEARCH_MS, end)])
   return ranges
@@ -57,7 +58,7 @@ function joinTouching(windows: TimeWindow[]): TimeWindow[] {
 
 async function search(orbit: OrbitSnapshot, area: Area): Promise<Opportunities> {
   const nowMs = Date.now()
-  const epochMs = Date.parse(orbit.elements.epochUtc + 'Z')
+  const epochMs = epochUtcMs(orbit.elements.epochUtc)
   const ranges = searchRanges(nowMs, epochMs)
   if (ranges.length === 0) return { model: '', windows: [], searchedUntilMs: nowMs, clippedByEpoch: true }
   const bounds = [ranges[0][0], ...ranges.map(([, end]) => end)]

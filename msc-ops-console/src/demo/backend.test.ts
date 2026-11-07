@@ -94,6 +94,21 @@ describe('demo backend', () => {
     expect(productsApi.sourceUrl('r', 's')).toMatch(/^data:/)
   })
 
+  it('gives each evaluated candidate its own footprint row', async () => {
+    const seed = (await taskingApi.list()).items.find((i) => i.body.request.status === 'FULFILLED')!
+    const { runs } = await loadPlanning(seed.id)
+    const camera = (await request(`/fe-api/planning/api/planning/runs/${runs[0].id}/camera/1`)) as { body: { candidates: Array<{ cameraResult: { id: string } }> } }
+    const rows = await Promise.all(
+      camera.body.candidates.map(async (c) => {
+        const result = (await request(`/fe-api/flight/api/camera-footprint-evaluations/${c.cameraResult.id}/result`)) as { samples: Array<{ footprintCorners: Array<{ northMeters: number }> }> }
+        return result.samples[0].footprintCorners[0].northMeters
+      }),
+    )
+    // How many passes are sunlit depends on when the demo orbit was loaded, so this asserts distinctness only.
+    expect(rows.length).toBeGreaterThanOrEqual(1)
+    expect(new Set(rows).size).toBe(rows.length)
+  })
+
   it('reports unknown routes as not found instead of inventing data', async () => {
     await expect(request('/fe-api/tasking/api/unknown')).rejects.toBeInstanceOf(ApiError)
   })
