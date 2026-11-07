@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, newIdempotencyKey, setDemoBackend } from './api/client'
 import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, TrackedSatelliteRow } from './api/types'
-import { DEMO_TLE_URL, resetDemoBackend } from './demo/backend'
+import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
 import { Timeline } from './components/Timeline'
@@ -56,27 +56,18 @@ function anchorUtcMs(anchorUtcIso: string, anchorTai: MissionInstant, target: Mi
   return anchorMs + (target.seconds - anchorTai.seconds) * 1000 + (target.nanos - anchorTai.nanos) / 1e6
 }
 
-// `?demo` in the URL starts in demo mode, so the console can be explored with no backend at all.
-const startInDemo = new URLSearchParams(window.location.search).has('demo')
-setDemoBackend(startInDemo)
-
-// Switching modes remounts the whole console, so no state loaded in one mode survives into the other.
-export default function App() {
-  const [demoMode, setDemoMode] = useState(startInDemo)
-  return (
-    <Console
-      key={demoMode ? 'demo' : 'live'}
-      demoMode={demoMode}
-      onDemoModeChange={(on) => {
-        setDemoBackend(on)
-        if (on) resetDemoBackend()
-        setDemoMode(on)
-      }}
-    />
-  )
+// `?demo` in the URL selects demo mode for the whole page load. Switching modes reloads the page,
+// which also stops every flow still in flight, so no call started in one mode reaches the other.
+function switchMode(on: boolean) {
+  window.location.assign(on ? '?demo' : window.location.pathname)
 }
 
-function Console({ demoMode, onDemoModeChange }: { demoMode: boolean; onDemoModeChange: (on: boolean) => void }) {
+export default function App() {
+  const [demoMode] = useState(() => {
+    const on = new URLSearchParams(window.location.search).has('demo')
+    setDemoBackend(on)
+    return on
+  })
   const [tab, setTab] = useState<Tab>('overview')
 
   const [phase, setPhase] = useState<Phase>('idle')
@@ -234,7 +225,7 @@ function Console({ demoMode, onDemoModeChange }: { demoMode: boolean; onDemoMode
         <div className="target-chip">공개 궤도: {DISPLAY_NAME} / NORAD {NORAD_ID}</div>
         <LiveClock />
         <label className="demo-toggle">
-          <input type="checkbox" checked={demoMode} onChange={(e) => onDemoModeChange(e.target.checked)} />
+          <input type="checkbox" checked={demoMode} onChange={(e) => switchMode(e.target.checked)} />
           데모 모드
         </label>
       </header>

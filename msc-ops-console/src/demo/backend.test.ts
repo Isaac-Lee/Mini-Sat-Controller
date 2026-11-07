@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, request, setDemoBackend } from '../api/client'
 import { anomalyApi } from '../api/anomaly'
+import { api, ApiError, request, setDemoBackend } from '../api/client'
+import { planningApi } from '../api/planning'
+import { productsApi } from '../api/products'
 import { taskingApi } from '../api/tasking'
 import { loadExecution, loadPlanning } from '../api/workflow'
 import { resetDemoBackend } from './backend'
@@ -59,6 +61,30 @@ describe('demo backend', () => {
     expect(same.state?.version).toBe(2)
     const second = await anomalyApi.requestRecovery(craft, 2, 'r', 'k4', 'operator2')
     expect(second.state?.body.frozen).toBe(false)
+  })
+
+  it('keeps access windows inside the requested horizon', async () => {
+    const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' as const }
+    const end = { ...start, seconds: start.seconds + 86_400 }
+    const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
+    const query = { kind: 'POINT_IMAGING' as const, target, horizon: { start, end }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
+    const { body } = await api.requestAccessPrediction('demo-orbit-snapshot-1', query, 'k')
+    expect(body.windows.length).toBeGreaterThan(0)
+    expect(body.windows.every((w) => w.start.seconds >= start.seconds && w.end.seconds <= end.seconds)).toBe(true)
+  })
+
+  it('refuses a second cancel and keeps an unplanned cancelled request out of planning', async () => {
+    const { id } = (await taskingApi.create(submission('대전'), 'k')) as { id: string }
+    const state = await taskingApi.get(id)
+    await taskingApi.cancel(id, state.version, 'c1')
+    const cancelled = await taskingApi.get(id)
+    await expect(taskingApi.cancel(id, cancelled.version, 'c2')).rejects.toMatchObject({ kind: 'conflict' })
+    await expect(planningApi.intakeStatus(id)).rejects.toMatchObject({ kind: 'not_found' })
+  })
+
+  it('links product sources to local demo data instead of the live route', () => {
+    expect(productsApi.sourceUrl('r', 's', true)).toMatch(/^data:image\//)
+    expect(productsApi.sourceUrl('r', 's')).toMatch(/^data:/)
   })
 
   it('reports unknown routes as not found instead of inventing data', async () => {

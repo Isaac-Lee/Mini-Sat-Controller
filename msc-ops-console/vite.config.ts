@@ -1,14 +1,27 @@
 import { existsSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import { missionServiceProxy } from './devProxy.ts'
 
 // Without local backend credentials the console still starts; only demo mode (`?demo`) has data then.
 const hasBackend = existsSync(new URL('../.local/msa.env', import.meta.url))
 
+// Without a proxy, /fe-api would fall through to the SPA fallback and return index.html with 200;
+// answer 503 instead so live screens show "cannot connect" rather than a JSON parse error.
+const noBackend: Plugin = {
+  name: 'msc-no-backend',
+  configureServer(server) {
+    server.middlewares.use('/fe-api', (_req, res) => {
+      res.statusCode = 503
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ message: '백엔드 설정(.local/msa.env)이 없습니다. 데모 모드(?demo)를 사용하세요.' }))
+    })
+  },
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: hasBackend ? [react()] : [react(), noBackend],
   server: {
     proxy: hasBackend ? {
       '/fe-api/control': missionServiceProxy('/fe-api/control', 8107),

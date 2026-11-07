@@ -153,7 +153,7 @@ interface DemoRequest {
   createdMs: number
   stageStartMs: number
   baseVersion: number
-  cancelled: { version: number; atMs: number } | null
+  cancelled: { version: number; atMs: number; planned: boolean } | null
 }
 
 function resolveArea(submission: Submission): { area: Area | null; options: Area[] } {
@@ -351,7 +351,11 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/access-predictions$/, (m, { body }) => {
     const query = body as AccessQuery
     const start = taiMs(query.horizon.start)
-    const windows = [95, 190, 1_530].map((min) => ({ start: tai(start + min * 60_000), end: tai(start + min * 60_000 + 7 * 60_000) }))
+    const end = taiMs(query.horizon.end)
+    const windows = [95, 190, 1_330]
+      .map((min) => ({ startMs: start + min * 60_000, endMs: start + (min + 7) * 60_000 }))
+      .filter((w) => w.endMs <= end)
+      .map((w) => ({ start: tai(w.startMs), end: tai(w.endMs) }))
     return { id: `demo-access-${++db.seq}`, body: { solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: 'DEMO', referenceDigest: 'demo', query, rootToleranceSeconds: 1, maximumCheckSeconds: 60, windows } }
   }],
 
@@ -375,8 +379,9 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   }],
   ['tasking', 'POST', /^\/api\/requests\/([^/]+)\/cancel$/, (m, { body, now }) => {
     const { r, state } = requestFor(m[1], now)
-    if ((body as { expectedVersion: number }).expectedVersion !== state.version || state.body.request.status === 'FULFILLED') fail(409, 'version conflict')
-    r.cancelled = { version: state.version + 1, atMs: now }
+    const status = state.body.request.status
+    if ((body as { expectedVersion: number }).expectedVersion !== state.version || /^(FULFILLED|CANCELLED)$/.test(status)) fail(409, 'version conflict')
+    r.cancelled = { version: state.version + 1, atMs: now, planned: status === 'ACCEPTED' || status === 'SCHEDULED' }
     return { id: r.id, version: r.cancelled.version }
   }],
   ['tasking', 'GET', /^\/api\/requests\/([^/]+)\/simulation-result$/, (m, { now }) => {
@@ -409,7 +414,8 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   ['planning', 'GET', /^\/api\/planning\/requests\/([^/]+)$/, (m, { now }) => {
     const { r, state } = requestFor(m[1], now)
     const status = state.body.request.status
-    if (status === 'RECEIVED' || status === 'CLARIFICATION_NEEDED') fail(404, 'not queued')
+    // Only requests that reached ACCEPTED ever entered the planning queue.
+    if (status === 'RECEIVED' || status === 'CLARIFICATION_NEEDED' || (r.cancelled && !r.cancelled.planned)) fail(404, 'not queued')
     const rev = r.submissions.length
     return {
       request_id: r.id,
