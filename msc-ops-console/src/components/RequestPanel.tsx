@@ -141,7 +141,10 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
     setActionMessage('')
     try {
       const original = await taskingApi.submittedRevision(selected.id, selected.body.request.revision)
-      const submission: Submission = { ...original, ...changes }
+      // A stored area bypasses gazetteer resolution (RequestWorkflow.submit), so keeping it with a
+      // new target would observe the old place under the new name. A new target re-resolves.
+      const targetChanged = changes.target !== undefined && changes.target !== original.target
+      const submission: Submission = { ...original, ...(targetChanged ? { area: null } : {}), ...changes }
       const payloadKey = JSON.stringify([selected.id, selected.version, submission])
       const key = reviseKeys.current.get(payloadKey) ?? newIdempotencyKey()
       reviseKeys.current.set(payloadKey, key)
@@ -398,7 +401,9 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
                 onChange={(e) => setRevisePriority(Number(e.target.value))}
               />
               <div className="hint">
-                영역·기준·마감시각은 현재 제출 원본을 그대로 유지합니다. 수정본은 처음(RECEIVED)부터 다시 처리됩니다.
+                기준·마감시각은 현재 제출 원본을 그대로 유지합니다. 목표를 바꾸면 기존 영역은 버리고 새 목표로 다시
+                해석하며, 목표를 그대로 두면 영역을 유지하되 서버가 이를 요청 입력 영역으로 다시 표시하므로 승인 지명
+                출처(id:version)는 남지 않습니다. 수정본은 처음(RECEIVED)부터 다시 처리됩니다.
               </div>
               {PLANNED.test(selected.body.request.status) && (
                 <label>

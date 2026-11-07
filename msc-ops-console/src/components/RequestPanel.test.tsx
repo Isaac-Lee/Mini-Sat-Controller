@@ -79,6 +79,38 @@ describe('RequestPanel revision', () => {
     expect(body).toEqual({ expectedVersion: 4, submission: { ...original, target: 'Daejeon station', priority: 70 } })
   })
 
+  it('drops a stored area when the target changes so the new target is resolved again', async () => {
+    const withArea = { ...original, area: option }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/submissions/2')) return Promise.resolve(jsonResponse(withArea))
+      if (init?.method === 'PUT') return Promise.resolve(jsonResponse({}))
+      return Promise.resolve(jsonResponse({ items: [requestState('ACCEPTED', { area: option })], nextCursor: null }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPanel()
+    await openRequest()
+    fireEvent.change(screen.getByLabelText('목표'), { target: { value: 'Busan' } })
+    fireEvent.click(screen.getByRole('button', { name: /수정본 제출/ }))
+    await screen.findByText(/수정본 제출됨/)
+    expect(sentRevision(fetchMock).body.submission).toEqual({ ...withArea, area: null, target: 'Busan' })
+  })
+
+  it('keeps a stored area when only the priority changes', async () => {
+    const withArea = { ...original, area: option }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/submissions/2')) return Promise.resolve(jsonResponse(withArea))
+      if (init?.method === 'PUT') return Promise.resolve(jsonResponse({}))
+      return Promise.resolve(jsonResponse({ items: [requestState('ACCEPTED', { area: option })], nextCursor: null }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPanel()
+    await openRequest()
+    fireEvent.change(screen.getByLabelText('우선순위 (0-100)', { selector: '#rev-priority' }), { target: { value: '90' } })
+    fireEvent.click(screen.getByRole('button', { name: /수정본 제출/ }))
+    await screen.findByText(/수정본 제출됨/)
+    expect(sentRevision(fetchMock).body.submission).toEqual({ ...withArea, priority: 90 })
+  })
+
   it('sends the server clarification option object exactly as received', async () => {
     const fetchMock = stubTasking(requestState('CLARIFICATION_NEEDED', { clarificationOptions: [option] }))
     renderPanel()
