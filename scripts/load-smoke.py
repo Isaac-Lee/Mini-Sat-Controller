@@ -9,6 +9,7 @@ import base64
 from collections import Counter
 import concurrent.futures
 from datetime import datetime, timezone
+import http.client
 import json
 import math
 import os
@@ -29,6 +30,11 @@ DEFAULT_TARGETS = [('tasking', 8101, '/api/requests?limit=20'),
                    ('ground-operations', 8106, '/internal/stations'),
                    ('anomaly', 8110, '/api/anomalies?limit=20')]
 PASSWORDS = {'service': 'MSC_SERVICE_PASSWORD', 'admin': 'MSC_LOCAL_ADMIN_PASSWORD'}
+
+
+def user_for(path):
+    """SecurityConfiguration: /internal/** needs SERVICE; admin can read the /api endpoints."""
+    return 'service' if path.startswith('/internal/') else 'admin'
 
 
 def percentile(values, p):
@@ -57,11 +63,11 @@ def summarize(samples):
             | {'max': round(max(latencies), 2)}}
 
 
-def run(targets, requests, concurrency, timeout, authorization):
+def run(targets, requests, concurrency, timeout, authorizations):
     def one(index):
         label, port, path = targets[index % len(targets)]
         request = urllib.request.Request(f'http://127.0.0.1:{port}{path}')
-        request.add_header('Authorization', authorization)
+        request.add_header('Authorization', authorizations[user_for(path)])
         start = time.perf_counter()
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -70,8 +76,8 @@ def run(targets, requests, concurrency, timeout, authorization):
         except urllib.error.HTTPError as error:
             status = error.code
             error.close()
-        except OSError:
-            status = 0  # connection failure or timeout
+        except (OSError, http.client.HTTPException):
+            status = 0  # connection failure, timeout or broken response
         return label, (time.perf_counter() - start) * 1000, status
 
     by_target = {}
@@ -95,7 +101,7 @@ class TopSampler(threading.Thread):
         try:
             self.samples.append(parse_top(subprocess.check_output(
                 self.command, text=True, stderr=subprocess.PIPE, timeout=30)))
-        except (OSError, subprocess.SubprocessError) as error:
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
             self.errors.append(str(getattr(error, 'stderr', None) or error).strip()[:300])
 
     def run(self):
@@ -119,25 +125,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--requests', type=int, default=600, choices=range(1, 10001), metavar='1..10000')
     parser.add_argument('--concurrency', type=int, default=4, choices=range(1, 17), metavar='1..16')
-    parser.add_argument('--timeout', type=float, default=10, help='Per-request seconds')
+    parser.add_argument('--timeout', type=int, default=10, choices=range(1, 61), metavar='1..60',
+                        help='Per-request socket timeout seconds')
     parser.add_argument('--target', type=target, action='append',
                         help='LABEL:PORT:PATH on 127.0.0.1 (repeatable; replaces the default read set)')
-    parser.add_argument('--user', choices=sorted(PASSWORDS), default='admin')
     parser.add_argument('--kubeconfig', default=str(ROOT / '.local/k8s/kubeconfig'))
     parser.add_argument('--namespace', default='msc')
-    parser.add_argument('--top-interval', type=float, default=5, help='Seconds between kubectl top samples')
+    parser.add_argument('--top-interval', type=int, default=5, choices=range(1, 61), metavar='1..60',
+                        help='Seconds between kubectl top samples')
     parser.add_argument('--output', type=Path, help='Also write the JSON evidence here')
     args = parser.parse_args()
     env = dict(line.split('=', 1) for line in (ROOT / '.local/msa.env').read_text().splitlines()
                if '=' in line and not line.startswith('#'))
-    authorization = 'Basic ' + base64.b64encode(f'{args.user}:{env[PASSWORDS[args.user]]}'.encode()).decode()
+    authorizations = {user: 'Basic ' + base64.b64encode(f'{user}:{env[key]}'.encode()).decode()
+                      for user, key in PASSWORDS.items()}
     sampler = TopSampler(['kubectl', '--kubeconfig', args.kubeconfig, '-n', args.namespace,
                           'top', 'pods', '--no-headers'], args.top_interval)
     sampler.sample()
     sampler.start()
     started_at = datetime.now(timezone.utc)
     start = time.monotonic()
-    latency = run(args.target or DEFAULT_TARGETS, args.requests, args.concurrency, args.timeout, authorization)
+    latency = run(args.target or DEFAULT_TARGETS, args.requests, args.concurrency, args.timeout, authorizations)
     duration = time.monotonic() - start
     sampler.stop.set()
     sampler.join()
@@ -150,7 +158,7 @@ def main():
                     'cpus': os.cpu_count(),
                     'memoryGiB': round(os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 2**30, 1)},
         'parameters': {'requests': args.requests, 'concurrency': args.concurrency, 'timeoutSeconds': args.timeout,
-                       'user': args.user, 'targets': [f'{l}:{p}:{u}' for l, p, u in args.target or DEFAULT_TARGETS]},
+                       'targets': [f'{l}:{p}:{u}' for l, p, u in args.target or DEFAULT_TARGETS]},
         'latency': latency, 'kubectlTop': sampler.report()}
     text = json.dumps(evidence, indent=2)
     if args.output:

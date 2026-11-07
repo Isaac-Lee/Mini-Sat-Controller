@@ -2,7 +2,10 @@
 """Offline checks for render-k8s.py HPA/metrics-server output and load-smoke.py measurement logic."""
 import http.server
 import importlib
+import json
+import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -47,9 +50,20 @@ class RenderTest(unittest.TestCase):
             self.assertEqual(container['resources']['requests'], {'cpu': '250m', 'memory': '256Mi'})
             if name not in hpas:
                 self.assertEqual(deployment['spec']['replicas'], 1)
-        # 9 fixed + 3 HPA services at 2 Pods + 1 surge Pod = 16 Pods.
-        self.assertEqual(render_k8s.database_connections(IMAGES, 2), 32)
-        self.assertEqual(render_k8s.database_connections(IMAGES, 8), 128)
+        # 9 fixed + 3 HPA services at 2 Pods + 12 surge Pods (every Deployment rolling) = 27 Pods.
+        self.assertEqual(render_k8s.database_connections(IMAGES, 2), 54)
+        self.assertEqual(render_k8s.database_connections(IMAGES, 6), 162)
+
+    def test_cli_rejects_unbudgeted_pool(self):
+        with tempfile.NamedTemporaryFile('w', suffix='.json') as images:
+            json.dump(IMAGES, images)
+            images.flush()
+            cli = lambda *extra: subprocess.run(
+                [sys.executable, str(Path(__file__).parent / 'render-k8s.py'), '--images', images.name, *extra],
+                capture_output=True, text=True)
+            self.assertIn('exceed', cli('--hpa', '--database-pool-size', '6').stderr)
+            self.assertIn('at least 1', cli('--hpa', '--database-pool-size', '0').stderr)
+            self.assertEqual(cli('--hpa', '--database-pool-size', '2').returncode, 0)
 
     def test_metrics_server_is_marked_local_only(self):
         items = render_k8s.local_metrics_server()
@@ -79,6 +93,12 @@ class LoadSmokeTest(unittest.TestCase):
         self.assertEqual(load_smoke.parse_top('planning-abc   12m   301Mi\ntasking-x 1   1Gi\n'),
                          {'planning-abc': {'cpuMillicores': 12, 'memoryMi': 301},
                           'tasking-x': {'cpuMillicores': 1000, 'memoryMi': 1024}})
+        self.assertEqual(load_smoke.parse_top('a 0m 2048Ki')['a']['memoryMi'], 2)
+
+    def test_default_targets_use_a_permitted_user(self):
+        users = {path: load_smoke.user_for(path) for _, _, path in load_smoke.DEFAULT_TARGETS}
+        self.assertEqual(users['/internal/missions'], 'service')
+        self.assertEqual(users['/api/catalog?limit=20'], 'admin')
 
     def test_run_counts_errors_deterministically(self):
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -86,7 +106,7 @@ class LoadSmokeTest(unittest.TestCase):
         try:
             port = server.server_address[1]
             targets = [('ok', port, '/ok'), ('bad', port, '/fail')]
-            result = load_smoke.run(targets, requests=10, concurrency=3, timeout=5, authorization='Basic x')
+            result = load_smoke.run(targets, requests=10, concurrency=3, timeout=5, authorizations={'admin': 'Basic x', 'service': 'Basic y'})
         finally:
             server.shutdown()
             server.server_close()

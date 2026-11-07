@@ -12,8 +12,8 @@ MAX_SURGE = 1
 
 
 def database_connections(images, pool_size):
-    """Worst case: every HPA service at max replicas plus one service mid-rollout with a surge Pod."""
-    pods = sum(HPA_MAX_REPLICAS if name in HPA_SERVICES else 1 for name in images) + MAX_SURGE
+    """Worst case: every HPA service at max replicas while all Deployments roll at once (one apply)."""
+    pods = sum(HPA_MAX_REPLICAS if name in HPA_SERVICES else 1 for name in images) + MAX_SURGE * len(images)
     return pods * pool_size
 
 
@@ -158,6 +158,8 @@ def main():
               if args.local_orekit_host_path else {'persistentVolumeClaim': {'claimName': 'msc-orekit'}})
     images = json.loads(args.images.read_text())
     if args.hpa:
+        if args.database_pool_size < 1:
+            parser.error('--database-pool-size must be at least 1')  # Hikari replaces < 1 with its default
         needed = database_connections(images, args.database_pool_size)
         if needed > args.database_max_connections:
             parser.error(f'worst-case {needed} database connections exceed --database-max-connections '

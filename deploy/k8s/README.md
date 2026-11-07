@@ -140,9 +140,10 @@ two-replica assertions in `verify-k8s.py` apply to the default render, not `--hp
 With `--hpa` the renderer pins `MSC_DATABASE_POOL_SIZE` on every Deployment and
 refuses to render when the worst case exceeds `--database-max-connections`
 (default 100, the PostgreSQL default; all service databases share one local server).
-Worst case = (9 fixed Pods + 3 × 2 HPA Pods + 1 rollout surge Pod) × pool, so
-pool 2 (the local runtime value) needs 32 connections and the platform default 8
-needs 128, which is rejected. Local render:
+Worst case = (9 fixed Pods + 3 × 2 HPA Pods + 12 surge Pods) × pool. The 12 surge
+Pods cover one apply rolling every Deployment at once. Pool 2 (the local runtime
+value) needs 54 connections; pool 6 needs 162 and the platform default 8 needs 216,
+which are both rejected. Pool sizes below 1 are rejected too. Local render:
 
 ```sh
 python3 scripts/render-k8s.py --images .local/service-images.json --hpa \
@@ -160,7 +161,8 @@ concurrency 4, max 10000/16). Request *i* goes to target *i* mod N over the loca
 ports of `forward-local-k8s.py`. It records p50/p90/p99/max latency, error rate and
 status counts per target, plus first/peak/last `kubectl top pods` CPU and memory, under
 `environment: local` with the date and machine. It reports no throughput rating.
-Planning and acquisition have no id-free read endpoint; target them with
+`/internal/*` targets are sent as the `service` user (SERVICE role) and `/api/*` as
+`admin`. Planning and acquisition have no id-free read endpoint, so target them with
 `--target planning:8102:/internal/planning/runs/<id>` using an existing id.
 `python3 scripts/test_k8s_scaling.py` checks the renderer and load-smoke logic offline.
 
@@ -172,7 +174,7 @@ Planning and acquisition have no id-free read endpoint; target them with
 | Steady memory per Pod | under 512Mi limit (768Mi flight-dynamics); heap ≤ 60% of limit | `MaxRAMPercentage=60` |
 | Read-smoke latency (local, concurrency 4) | p99 under 1 s, error rate 0 | no prior measurement; to be replaced |
 | HPA scale-up | only when sustained average CPU > 200m per Pod | 80% of 250m request |
-| DB connections at HPA max (pool 2) | ≤ 32 | renderer budget above |
+| DB connections at HPA max during a full rollout (pool 2) | ≤ 54 | renderer budget above |
 
 ### Measurement status: environment local, 2026-11-07, not measured
 
