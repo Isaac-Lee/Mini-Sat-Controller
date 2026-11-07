@@ -176,6 +176,12 @@ public class GroundApi {
           var booking = current.body();
           if (booking.status() == BookingStatus.CANCELLED
               || booking.status() == BookingStatus.REJECTED) return current;
+          var pass = store.find("pass", SimulatedGroundStation.passId(id), PassRecord.class);
+          // A finished contact's outcome must not depend on when the report is filed.
+          if (pass.isPresent()
+              && pass.get().body().status() == PassStatus.ACTIVE
+              && clock.now().compareTo(booking.request().window().end()) >= 0)
+            throw ApiException.conflict("Report the finished SIMULATION pass before cancelling");
           var cancelled =
               new Booking(
                   id,

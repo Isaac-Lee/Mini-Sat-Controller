@@ -80,6 +80,49 @@ public final class GroundContracts {
     }
   }
 
+  public enum PassStatus {
+    ACTIVE,
+    REPORTED
+  }
+
+  public enum PassOutcome {
+    COMPLETED,
+    BOOKING_LOST
+  }
+
+  /**
+   * SIMULATION pass session for one confirmed booking. No RF quantities: only simulated contact
+   * start/end (TAI), bytes accounted against the booked volume and an outcome. {@code
+   * accountedBytes} is the booked request volume (decimal MB x 10^6) for COMPLETED and 0
+   * otherwise; it is not a measured reception. BOOKING_LOST has no contact end.
+   */
+  public record PassRecord(
+      String id,
+      String bookingId,
+      String environment,
+      PassStatus status,
+      MissionInstant contactStart,
+      MissionInstant contactEnd,
+      long accountedBytes,
+      PassOutcome outcome,
+      String evidenceReference) {
+    public PassRecord {
+      text(id);
+      text(bookingId);
+      text(evidenceReference);
+      Objects.requireNonNull(status);
+      Objects.requireNonNull(contactStart).requireTai();
+      if (!"SIMULATION".equals(environment)
+          || accountedBytes < 0
+          || (status == PassStatus.ACTIVE) != (outcome == null)
+          || (outcome == PassOutcome.COMPLETED) != (contactEnd != null)
+          || (outcome != PassOutcome.COMPLETED && accountedBytes != 0))
+        throw new IllegalArgumentException("Invalid SIMULATION pass session");
+      if (contactEnd != null && contactEnd.compareTo(contactStart) < 0)
+        throw new IllegalArgumentException("Pass contact end precedes start");
+    }
+  }
+
   public static java.math.BigDecimal tai(MissionInstant instant) {
     instant.requireTai();
     return java.math.BigDecimal.valueOf(instant.seconds())
