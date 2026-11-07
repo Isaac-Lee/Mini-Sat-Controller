@@ -2,6 +2,21 @@
 
 Current checkpoint (2026-09-12): ten independent services including Planning and Control intake.
 
+## 2026-11-07 reference archive collection
+
+Reference-data now collects, validates and publishes Orekit UTC/EOP snapshots from official
+`orekit-data` commits. See [reference archive](reference-archive.md) for the thresholds and the
+flight-dynamics pickup procedure.
+`mvn -pl services/msc-reference-data-service -am test` passed with BUILD SUCCESS: 18 service tests,
+including 5 archive validation/freshness tests on committed real files and 4 PostgreSQL
+Testcontainers collection tests (publication, network failure, invalid file, freshness events).
+The explicitly invoked `ReferenceArchiveLiveIT` downloaded commit
+`2d6edc9118983d95c51303df05db16ada90b7ee2` from gitlab.orekit.org. Both git blobs matched, Orekit
+loaded the archive, and the archive SHA-256 was
+`dce4dce31ae75d324038ec5c8ee01292bd00dd0249e9188af8f8c10d43d2ac83`.
+Not proven: Kubernetes deployment of the new mount, a measured collection footprint, and a
+flight-dynamics rollout onto a collected archive.
+
 ## 2026-09-12 independent Control intake
 
 The new Control module passed three actual broker/DB/HTTP integration tests, was independently

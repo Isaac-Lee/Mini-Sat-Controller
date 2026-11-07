@@ -30,6 +30,14 @@ def render(images, namespace, orekit_volume):
         if name == 'flight-dynamics':
             container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit', 'readOnly': True})
             volumes.append({'name': 'orekit', **orekit_volume})
+        if name == 'reference-data':
+            # Sole writer of /orekit/snapshots/<commit>/time-frames.zip (docs/backend/reference-archive.md).
+            # The in-process collector adds ~4 MB files + one Orekit EOP load per new monthly commit,
+            # inside the existing 256Mi request / 512Mi limit; measure heap during a real collection.
+            container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit/snapshots',
+                                              'subPath': 'snapshots'})
+            container['env'].append({'name': 'MSC_REFERENCE_ARCHIVE_DIR', 'value': '/orekit/snapshots'})
+            volumes.append({'name': 'orekit', **orekit_volume})
         items.append({'apiVersion': 'apps/v1', 'kind': 'Deployment',
                       'metadata': {'name': name, 'namespace': namespace, 'labels': labels},
                       'spec': {'replicas': 1, 'revisionHistoryLimit': 3, 'progressDeadlineSeconds': 600,
