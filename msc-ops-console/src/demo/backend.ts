@@ -500,6 +500,9 @@ const routes: Array<[string, string, RegExp, Handler]> = [
 
   // Anomaly
   ['anomaly', 'GET', /^\/api\/safety\/([^/]+)$/, (m) => (m[1] === CRAFT ? db.safety.history[db.safety.history.length - 1] : fail(404, 'no safety policy'))],
+  ['anomaly', 'GET', /^\/api\/safety-policies\/([^/]+)$/, (m) => (m[1] === CRAFT
+    ? { id: CRAFT, version: 1, body: { spacecraftId: CRAFT, version: 1, telemetryBindingVersion: 1, minimumBatteryWh: 20, maximumStorageMb: 500, minimumPropellantKg: 1, recoveryApprovals: 2, approvalValiditySeconds: 3600, approvalReference: 'DEMO 합성 안전 정책' } }
+    : fail(404, 'no safety policy'))],
   ['anomaly', 'GET', /^\/api\/safety\/([^/]+)\/history$/, (m) => (m[1] === CRAFT ? db.safety.history : fail(404, 'no safety policy'))],
   ['anomaly', 'POST', /^\/api\/safety\/([^/]+)\/check$/, (m, { now }) => {
     if (m[1] !== CRAFT) fail(404, 'no safety policy')
