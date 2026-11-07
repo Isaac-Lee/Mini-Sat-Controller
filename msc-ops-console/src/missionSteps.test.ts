@@ -23,7 +23,7 @@ function router(nowSeconds: number) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const headers = (init?.headers ?? {}) as Record<string, string>
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined, key: headers['Idempotency-Key'] ?? null })
-    if (url.includes('time/utc-to-tai') || url.includes('/internal/time')) return jsonResponse({ seconds: nowSeconds, nanos: 0, scale: 'TAI' })
+    if (url.endsWith('/api/time/utc-to-tai')) return jsonResponse({ conversions: [{ tai: { seconds: nowSeconds, nanos: 0, scale: 'TAI' }, utc: 'x' }], referenceArchiveSha256: 'x' })
     if (url.endsWith('/simulation-commit')) return jsonResponse({ id: 'd1', body: { schedule: { key: 'K', version: 1 } } })
     if (url.endsWith('/simulation-time-correlations')) return jsonResponse({ version: 7 })
     if (url.includes('/simulation-time-correlations/')) return jsonResponse({ message: 'none' }, 404)
