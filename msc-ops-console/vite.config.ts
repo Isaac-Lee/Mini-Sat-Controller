@@ -32,6 +32,10 @@ export default defineConfig({
       '/fe-api/planning': missionServiceProxy('/fe-api/planning', 8102),
       '/fe-api/monitoring': missionServiceProxy('/fe-api/monitoring', 8109),
       '/fe-api/anomaly': missionServiceProxy('/fe-api/anomaly', 8110),
+      '/fe-api/mission': missionServiceProxy('/fe-api/mission', 8104),
+      '/fe-api/ground': missionServiceProxy('/fe-api/ground', 8106),
+      '/fe-api/acquisition': missionServiceProxy('/fe-api/acquisition', 8111),
+      '/fe-api/simulator': missionServiceProxy('/fe-api/simulator', 8114),
     } : undefined,
   },
 })
