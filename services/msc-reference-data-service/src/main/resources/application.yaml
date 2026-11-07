@@ -6,3 +6,6 @@ spring:
 msc:
   events:
     consume: true
+  reference:
+    # Shared with flight-dynamics (read-only there); one <commit>/time-frames.zip per snapshot.
+    archive-dir: ${MSC_REFERENCE_ARCHIVE_DIR:.local/orekit/snapshots}

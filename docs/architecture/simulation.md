@@ -26,6 +26,14 @@ duplicated and out-of-order telemetry, lost contacts, partial payload reception,
 onboard/ground divergence and stale planning inputs. Replay ordering policy and
 seed handling must be explicit before claims of reproducibility across simulators.
 
+A first `TOY_MODEL` slice exists (ADR-0008 amendment): the simulator service integrates
+battery Wh, storage MB and propellant kg per tick from declared operation effects, derives a
+link-available flag from supplied TAI visibility windows with seeded dropouts, and records a
+seeded event log whose replay reproduces identical telemetry. Seed handling is explicit (one
+`java.util.Random(seed)` drawn per step in tick order, stored in the log); ordering is by
+completion tick then command ID. This is labelled toy fidelity, not the Record/Replay of real
+observations described above.
+
 Shadow Planning must write to a separate schedule authority/store and cannot call
 real release adapters. Command release remains a safety/authority boundary in
 simulation too. Simulator fidelity, physical validation and fault recovery are

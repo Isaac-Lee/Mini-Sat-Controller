@@ -89,6 +89,16 @@ class SafetyStoreTest {
   }
 
   @Test
+  void policyStateExposesRequiredApprovalsAndUnknownCraftIsMissing() {
+    var state = safety.policyState("sim");
+    assertEquals("sim", state.id());
+    assertEquals(2, state.body().recoveryApprovals());
+    assertEquals(policy, state.body());
+    var missing = assertThrows(ApiException.class, () -> safety.policyState("other"));
+    assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, missing.status());
+  }
+
+  @Test
   void lateCriticalEvidenceLatchesButReplayedReviewedEvidenceDoesNotRelatch() {
     var nominal = reading(10, Mode.NOMINAL, 999);
     observe(nominal);

@@ -42,7 +42,7 @@ records is denied; the existing owner-filtered request status API remains availa
 ## Evaluation boundary and verification
 
 Candidates currently remain `NOT_EVALUATED`, with pending gates and captured
-missing-input reasons in decision records. Separate [resource assessments](planning-resources.md) now compute simulation battery/storage/propellant from pinned telemetry and current schedule context. This does not establish AOI illumination, whole-attitude validity, ground confirmation or release permission. Multi-operation resource models, fully evaluated candidates and schedule commitment remain required follow-up work.
+missing-input reasons in decision records. Separate [resource assessments](planning-resources.md) now compute simulation battery/storage/propellant from pinned telemetry and current schedule context. This does not establish AOI illumination, whole-attitude validity, ground confirmation or release permission. Multi-operation resource models, fully evaluated candidates and schedule commitment remain required follow-up work. Operators can request greedy multi-spacecraft [solver proposals](planning-solver.md) (`GREEDY_HEURISTIC_NOT_OPTIMAL`) before committing through `simulation-commit`.
 
 The targeted tests exercise request revision/source retention, JSON restoration,
 missing-category handling, hash mismatch rejection, cancellation fencing,
