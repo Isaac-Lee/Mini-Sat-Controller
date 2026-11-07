@@ -93,7 +93,8 @@ Flight Dynamics (local port 8103):
 | GET | `/internal/access-predictions/{predictionId}` | Existing contact/imaging geometry result |
 
 Equivalent `/api/public-orbits/...` endpoints exist. Convert UTC with
-`POST /internal/time/utc-to-tai` before constructing TAI horizons. Future mission
+`POST /internal/time/utc-to-tai` (or the authenticated batch `POST /api/time/utc-to-tai`;
+`POST /api/time/tai-to-utc` is the inverse) before constructing TAI horizons. Future mission
 configuration should map the `norad-<id>` key to independently approved sensor and
 simulator definitions; this feature does not invent SPACEEYE-T1 instrument specifications.
 

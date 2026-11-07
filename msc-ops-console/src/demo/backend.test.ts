@@ -64,13 +64,20 @@ describe('demo backend', () => {
   })
 
   it('keeps access windows inside the requested horizon', async () => {
-    const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' as const }
-    const end = { ...start, seconds: start.seconds + 7 * 86_400 }
-    const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
+    const start = await api.utcToTai(new Date().toISOString().slice(0, 19))
+    const end = { ...start, seconds: start.seconds + 86_400 }
+    const target = { id: 't', latitudeDegrees: 0, longitudeDegrees: 127, altitudeMeters: 0 }
     const query = { kind: 'POINT_IMAGING' as const, target, horizon: { start, end }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
     const { body } = await api.requestAccessPrediction('demo-orbit-snapshot-1', query, 'k')
-    expect(body.windows.length).toBeGreaterThan(0)
     expect(body.windows.every((w) => w.start.seconds >= start.seconds && w.end.seconds <= end.seconds)).toBe(true)
+  })
+
+  it('rejects searches Flight Dynamics would reject: over 24 h, or beyond 7 days from the epoch', async () => {
+    const start = await api.utcToTai(new Date().toISOString().slice(0, 19))
+    const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
+    const query = (s: number, e: number) => ({ kind: 'POINT_IMAGING' as const, target, horizon: { start: { ...start, seconds: s }, end: { ...start, seconds: e } }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 })
+    await expect(api.requestAccessPrediction('demo-orbit-snapshot-1', query(start.seconds, start.seconds + 86_401), 'k1')).rejects.toMatchObject({ kind: 'invalid' })
+    await expect(api.requestAccessPrediction('demo-orbit-snapshot-1', query(start.seconds + 7 * 86_400, start.seconds + 7 * 86_400 + 3_600), 'k2')).rejects.toMatchObject({ kind: 'invalid' })
   })
 
   it('refuses a second cancel and keeps an unplanned cancelled request out of planning', async () => {

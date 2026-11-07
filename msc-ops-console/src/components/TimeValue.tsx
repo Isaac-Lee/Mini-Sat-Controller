@@ -1,30 +1,32 @@
 import type { MissionInstant } from '../api/types'
-import { formatLocal, formatTai, formatUtc, taiToApproxUtcMs, type TaiUtcOffset } from '../time'
+import { formatServerUtc, formatTai, localOfServerUtc, useExactUtc, type TaiUtcOffset } from '../time'
 
 interface Props {
   instant: MissionInstant
-  offset: TaiUtcOffset | null
+  // ponytail: unused since UTC is converted exactly server-side; kept so the many callers need no
+  // change in this PR. Drop it from callers in a follow-up.
+  offset?: TaiUtcOffset | null
 }
 
-// UTC is shown as primary (per operating requirement), TAI is the authoritative raw value the
-// backend actually returned, and local time is secondary. When no offset is available yet, UTC
-// cannot be derived and we say so instead of guessing.
-export function TimeValue({ instant, offset }: Props) {
-  if (!offset) {
+// UTC is shown as primary (per operating requirement), converted by Flight Dynamics through the
+// pinned leap-second archive; TAI is the authoritative raw value; local time is secondary. If the
+// conversion is unavailable we say so instead of guessing.
+export function TimeValue({ instant }: Props) {
+  const { utc, failed } = useExactUtc(instant)
+  if (!utc) {
     return (
       <span className="time-value">
         <span className="mono">{formatTai(instant)}</span>
-        <span className="hint"> · UTC 변환 불가(오프셋 없음)</span>
+        <span className="hint">{failed ? ' · UTC 변환 불가(변환 서비스 응답 없음)' : ' · UTC 변환 중...'}</span>
       </span>
     )
   }
-  const ms = taiToApproxUtcMs(instant, offset)
+  const local = localOfServerUtc(utc)
   return (
     <span className="time-value">
-      {formatUtc(ms)}
-      <span className="hint"> ({formatLocal(ms)})</span>
+      {formatServerUtc(utc)}
+      {local && <span className="hint"> ({local})</span>}
       <span className="hint mono"> · 원본 {formatTai(instant)}</span>
-      <span className="hint"> · UTC 근사(오프셋 기준 {offset.anchorUtcIso})</span>
     </span>
   )
 }

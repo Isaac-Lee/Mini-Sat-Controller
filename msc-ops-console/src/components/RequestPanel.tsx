@@ -348,7 +348,6 @@ export function RequestPanel({ offset, onSelectRequest, selectedRequest, onOpenW
               onImportOrbit={onImportOrbit}
               importBusy={importBusy}
               onShowPass={onShowPass}
-              offset={offset}
             />
           )}
           <button onClick={() => loadSubmission(selected.body.request.revision)}>

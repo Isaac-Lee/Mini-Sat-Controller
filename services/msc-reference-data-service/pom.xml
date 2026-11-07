@@ -16,6 +16,11 @@
     </dependency>
     <dependency>
       <groupId>msc</groupId>
+      <artifactId>msc-orbit-adapter</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>msc</groupId>
       <artifactId>msc-contracts</artifactId>
       <version>${project.version}</version>
     </dependency>

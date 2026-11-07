@@ -41,6 +41,29 @@ describe('browser SGP4', () => {
     }
   })
 
+  // Reference passes from an independent implementation (python-sgp4 2.24 with WGS-72, its own
+  // IAU-82 GMST rotation and WGS-84 geodetic), so a dropped or wrong frame rotation fails here.
+  it('matches an independent SGP4 implementation for the Daejeon passes', () => {
+    const windows = findAccessWindows(satrec, DAEJEON, EPOCH, EPOCH + 7 * 86_400_000, CRITERIA)
+    const reference = [
+      ['2026-11-09T20:05:14Z', 81],
+      ['2026-11-11T08:53:43Z', 71],
+      ['2026-11-12T08:36:03Z', 49],
+    ] as const
+    for (const [start, seconds] of reference) {
+      const match = windows.find((w) => Math.abs(w.startMs - Date.parse(start)) <= 2_000)
+      expect(match, start).toBeDefined()
+      expect(Math.abs((match!.endMs - match!.startMs) / 1000 - seconds)).toBeLessThanOrEqual(2)
+    }
+  })
+
+  it('never reports a window past a horizon shorter than one scan step', () => {
+    const [w] = findAccessWindows(satrec, DAEJEON, EPOCH, EPOCH + 7 * 86_400_000, CRITERIA)
+    const inside = findAccessWindows(satrec, DAEJEON, w.startMs + 1_000, w.startMs + 4_000, CRITERIA)
+    expect(inside).toHaveLength(1)
+    expect(inside[0].endMs).toBeLessThanOrEqual(w.startMs + 4_000)
+  })
+
   it('relates off-nadir to elevation as spherical geometry requires', () => {
     const [w] = findAccessWindows(satrec, DAEJEON, EPOCH, EPOCH + 7 * 86_400_000, CRITERIA)
     const g = lookGeometry(satrec, DAEJEON, w.bestMs)

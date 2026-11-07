@@ -4,6 +4,8 @@ import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, Ti
 import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
+import { MissionActionsPanel } from './components/MissionActionsPanel'
+import { loadFootprints, type FootprintOverlay } from './api/footprints'
 import { Timeline } from './components/Timeline'
 import { LiveClock } from './components/LiveClock'
 import { RequestPanel } from './components/RequestPanel'
@@ -33,6 +35,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'monitor', label: '모니터링' },
   { id: 'authority', label: '승인·안전' },
   { id: 'product', label: '제품' },
+  { id: 'actions', label: '임무 조작' },
 ]
 
 function phaseFromError(error: unknown): Phase {
@@ -94,6 +97,20 @@ export default function App() {
 
   const [inspectionCraft, setInspectionCraft] = useState('sim-spaceeye-t1')
   const [selectedRequest, setSelectedRequest] = useState<RequestState | null>(null)
+  const [footprints, setFootprints] = useState<FootprintOverlay[]>([])
+
+  // Sampled footprints of the selected request's newest planning run (SIMULATION evidence only).
+  // Failures leave the overlay empty rather than drawing anything unverified.
+  const selectedRequestId = selectedRequest?.id ?? null
+  useEffect(() => {
+    let current = true
+    setFootprints([])
+    if (selectedRequestId)
+      loadFootprints(selectedRequestId)
+        .then((result) => { if (current) setFootprints(result.overlays) })
+        .catch(() => {})
+    return () => { current = false }
+  }, [selectedRequestId])
 
   const taiUtcOffset = useTaiUtcOffset()
 
@@ -171,13 +188,18 @@ export default function App() {
     setPredictMessage('')
     if (target) setTab('map')
     try {
-      const nowUtc = new Date().toISOString().replace(/\.\d+Z$/, '')
-      const nowTai = await api.utcToTai(nowUtc)
+      const utcNoZ = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, '')
+      const nowMs = Date.now()
+      const nowUtc = utcNoZ(nowMs)
+      // Flight Dynamics only predicts within ±7 days of the GP epoch, so the margin around a late
+      // pass is clipped to that interval.
+      const epochMs = Date.parse(flightOrbit.elements.epochUtc + 'Z')
+      const [nowTai, laterTai, epochStartTai, epochEndTai] = (
+        await api.convertUtc([nowUtc, utcNoZ(nowMs + 3 * 60 * 60 * 1000), utcNoZ(epochMs - 7 * 86_400_000), utcNoZ(epochMs + 7 * 86_400_000)])
+      ).conversions.map((c) => c.tai)
       const margin = 15 * 60
-      const start = target ? { ...target.start, seconds: target.start.seconds - margin } : nowTai
-      const end = target
-        ? { ...target.end, seconds: target.end.seconds + margin }
-        : await api.utcToTai(new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, ''))
+      const start = target ? { ...target.start, seconds: Math.max(target.start.seconds - margin, epochStartTai.seconds) } : nowTai
+      const end = target ? { ...target.end, seconds: Math.min(target.end.seconds + margin, epochEndTai.seconds) } : laterTai
       const key = newIdempotencyKey()
       const manifestResult = await api.predict(flightOrbit.id, { start, end }, target ? 10 : 60, key)
       const doc = await api.samples(manifestResult.body.id)
@@ -282,7 +304,7 @@ export default function App() {
       {tab === 'map' && (
         <main className="layout" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
           <div className="map-pane">
-            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} highlight={pass} />
+            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} footprints={footprints} highlight={pass} />
           </div>
 
           <aside className="side-panel">
@@ -425,6 +447,12 @@ export default function App() {
           <AuthorityPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} offset={taiUtcOffset.offset} />
         </main>
       )}
+
+      {/* Kept mounted (hidden) so switching to 승인·안전 mid-flow keeps the step progress; a new
+          request starts a fresh flow. */}
+      <main className="layout single" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden={tab !== 'actions'}>
+        <MissionActionsPanel key={selectedRequest?.id ?? 'none'} selectedRequest={selectedRequest} />
+      </main>
 
       {tab === 'product' && (
         <main className="layout single" id="panel-product" role="tabpanel" aria-labelledby="tab-product">

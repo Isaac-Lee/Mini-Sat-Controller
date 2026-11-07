@@ -131,7 +131,7 @@ export function findAccessWindows(satrec: SatRec, site: Site, startMs: number, e
   const windows: AccessWindow[] = []
   let open: number | null = inside(startMs) ? startMs : null
   let previous = startMs
-  for (let ms = startMs + SCAN_STEP_MS; ; ms = Math.min(ms + SCAN_STEP_MS, endMs)) {
+  for (let ms = Math.min(startMs + SCAN_STEP_MS, endMs); ; ms = Math.min(ms + SCAN_STEP_MS, endMs)) {
     const now = inside(ms)
     if (open === null && now) open = edge(previous, ms)
     if (open !== null && (!now || ms === endMs)) {

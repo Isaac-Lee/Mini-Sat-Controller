@@ -148,6 +148,13 @@ function groundTrack(start: MissionInstant, count: number, stepSeconds: number):
   }))
 }
 
+// The demo enforces the same limits as Flight Dynamics (GeneralPerturbationsAdapter and
+// OrekitAccessPredictor), so a request the real service would reject fails here too.
+const EPOCH_TAI_SECONDS = tai(ORBIT_EPOCH_MS).seconds
+function requireEpochValidity(horizon: { start: MissionInstant; end: MissionInstant }, message: string) {
+  if ([horizon.start, horizon.end].some((i) => Math.abs(i.seconds - EPOCH_TAI_SECONDS) > 7 * 86_400)) fail(400, message)
+}
+
 // Same query the console sends for point imaging (TimelinePanel, ImagingOpportunities).
 const IMAGING: AccessCriteria = { minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
 const MINIMUM_SUN_ELEVATION_DEGREES = 10
@@ -259,6 +266,41 @@ export function resetDemoBackend() {
   listeners.forEach((l) => l(calls))
 }
 
+// ---- demo footprints: obviously synthetic 2 km squares stepping across the AOI ----
+
+function demoFootprint(evaluationId: string, now: number) {
+  const area = requestFor(owner(evaluationId), now).r.area ?? fail(404, 'no area')
+  const rad = Math.PI / 180
+  const lat = (area.south + area.north) / 2
+  const widthMeters = 6378137 * Math.cos(lat * rad) * (area.east - area.west) * rad
+  const heightMeters = 6378137 * (area.north - area.south) * rad
+  const aoiMapping = {
+    mapping: 'WGS84_LOCAL_LINEAR_RECTANGLE_V1',
+    environment: 'SIMULATION',
+    approximationNote: 'DEMO 합성 footprint — 실제 투영 계산 결과가 아닙니다.',
+    centerLatitudeDegrees: lat,
+    centerLongitudeDegrees: (area.west + area.east) / 2,
+    widthMeters,
+    heightMeters,
+  }
+  const offset = evaluationId.endsWith('-1') ? -1 : 1
+  const samples = [-2, -1, 0, 1, 2].map((k) => {
+    const e = k * widthMeters * 0.15
+    const n = offset * heightMeters * 0.1
+    return {
+      instant: tai(now + k * 1000),
+      outcome: 'COMPUTED',
+      footprintCorners: [[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]].map(([de, dn]) => ({ eastMeters: e + de, northMeters: n + dn })),
+      coverageFraction: 0.1,
+    }
+  })
+  const scope = 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE'
+  return {
+    manifest: { id: evaluationId, query: { area }, aoiMapping, scope },
+    result: { id: evaluationId, aoiMapping, samples, scope },
+  }
+}
+
 // ---- workflow evidence derived from a request id ----
 
 function requestFor(id: string, now: number) {
@@ -290,8 +332,9 @@ function computeCandidates(r: DemoRequest) {
   const site = centre(r.area)
   const from = r.stageStartMs + STAGE_MS.RECEIVED
   return findAccessWindows(SATREC, site, from, from + 7 * 86_400_000, IMAGING).slice(0, 3).map((w, i) => {
-    const sun = Math.round(sunElevationDegrees(site, w.bestMs) * 10) / 10
-    const feasible = sun >= MINIMUM_SUN_ELEVATION_DEGREES
+    const sunDegrees = sunElevationDegrees(site, w.bestMs)
+    const feasible = sunDegrees >= MINIMUM_SUN_ELEVATION_DEGREES
+    const sun = Math.round(sunDegrees * 10) / 10
     return {
       id: { value: `${r.id}~cand-${i + 1}` },
       activity: { window: { start: tai(w.startMs), end: tai(w.endMs) }, definitionId: { value: 'IMAGE_CAPTURE' }, definitionVersion: 3 },
@@ -358,9 +401,21 @@ const routes: Array<[string, string, RegExp, Handler]> = [
     db.imported = true
     return { id: ORBIT.id, status: 'IMPORTED' }
   }],
-  ['flight', 'POST', /^\/internal\/time\/utc-to-tai$/, (_, { body }) => tai(Date.parse((body as { utc: string }).utc + 'Z'))],
+  // Demo conversion uses a fixed TAI-UTC of 37 s (no leap-second table); labelled DEMO in the archive field.
+  ['flight', 'POST', /^\/api\/time\/utc-to-tai$/, (_, { body }) => ({
+    conversions: (body as { utc: string[] }).utc.map((utc) => ({ tai: tai(Date.parse(utc + 'Z')), utc })),
+    referenceArchiveSha256: 'DEMO-fixed-37s',
+  })],
+  ['flight', 'POST', /^\/api\/time\/tai-to-utc$/, (_, { body }) => ({
+    conversions: (body as { instants: MissionInstant[] }).instants.map((i) => ({ tai: i, utc: new Date(taiMs(i)).toISOString().replace('Z', '') })),
+    referenceArchiveSha256: 'DEMO-fixed-37s',
+  })],
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/predictions$/, (m, { body }) => {
     const { horizon, stepSeconds } = body as { horizon: { start: MissionInstant; end: MissionInstant }; stepSeconds: number }
+    const span = horizon.end.seconds - horizon.start.seconds
+    if (stepSeconds < 1 || stepSeconds > 3600 || span > 7 * 86_400 || Math.ceil(span / stepSeconds) > 20_000)
+      fail(400, 'Prediction must fit seven days and 20000 samples with step 1..3600 seconds')
+    requireEpochValidity(horizon, 'Public GP epoch is more than seven days from prediction; refresh reference')
     const id = `demo-prediction-${++db.seq}`
     db.predictions.set(id, { ...horizon, stepSeconds })
     const sampleCount = Math.floor((horizon.end.seconds - horizon.start.seconds) / stepSeconds) + 1
@@ -378,6 +433,8 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/access-predictions$/, (m, { body }) => {
     const query = body as AccessQuery
     if (query.kind !== 'POINT_IMAGING') fail(400, 'demo supports POINT_IMAGING only')
+    if (query.horizon.end.seconds - query.horizon.start.seconds > 86_400) fail(400, 'Access search is limited to 24 hours per request')
+    requireEpochValidity(query.horizon, 'Initial orbit is outside model validity interval')
     const windows = findAccessWindows(SATREC, query.target, taiMs(query.horizon.start), taiMs(query.horizon.end), query)
       .map((w) => ({ start: tai(w.startMs), end: tai(w.endMs) }))
     return { id: `demo-access-${++db.seq}`, body: { solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: MODEL, referenceDigest: 'demo', query, rootToleranceSeconds: 1, maximumCheckSeconds: 10, windows } }
@@ -479,9 +536,19 @@ const routes: Array<[string, string, RegExp, Handler]> = [
     id: m[1],
     body: {
       scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE',
-      candidates: candidates(requestFor(owner(m[1]), now).r).filter((c) => c.feasibility.feasible).map((c) => ({ candidateId: c.id.value, cameraResult: { body: { scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } })),
+      // Only sun-feasible propagated passes get a camera (footprint) evaluation.
+      candidates: candidates(requestFor(owner(m[1]), now).r)
+        .filter((c) => c.feasibility.feasible)
+        .map((c) => {
+          const fp = c.id.value.replace('~cand-', '~fp-')
+          return { candidateId: c.id.value, cameraResult: { id: fp, body: { id: fp, scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } }
+        }),
     },
   })],
+
+  // Flight Dynamics sampled footprints (demo: synthetic squares inside the request AOI)
+  ['flight', 'GET', /^\/api\/camera-footprint-evaluations\/([^/]+)$/, (m, { now }) => demoFootprint(m[1], now).manifest],
+  ['flight', 'GET', /^\/api\/camera-footprint-evaluations\/([^/]+)\/result$/, (m, { now }) => demoFootprint(m[1], now).result],
 
   // Spacecraft Control
   ['control', 'GET', /^\/api\/command-loads\/([^/]+)\/(simulation-release|simulation-delivery|simulation-execution)$/, (m, { now }) => {
@@ -524,6 +591,9 @@ const routes: Array<[string, string, RegExp, Handler]> = [
 
   // Anomaly
   ['anomaly', 'GET', /^\/api\/safety\/([^/]+)$/, (m) => (m[1] === CRAFT ? db.safety.history[db.safety.history.length - 1] : fail(404, 'no safety policy'))],
+  ['anomaly', 'GET', /^\/api\/safety-policies\/([^/]+)$/, (m) => (m[1] === CRAFT
+    ? { id: CRAFT, version: 1, body: { spacecraftId: CRAFT, version: 1, telemetryBindingVersion: 1, minimumBatteryWh: 20, maximumStorageMb: 500, minimumPropellantKg: 1, recoveryApprovals: 2, approvalValiditySeconds: 3600, approvalReference: 'DEMO 합성 안전 정책' } }
+    : fail(404, 'no safety policy'))],
   ['anomaly', 'GET', /^\/api\/safety\/([^/]+)\/history$/, (m) => (m[1] === CRAFT ? db.safety.history : fail(404, 'no safety policy'))],
   ['anomaly', 'POST', /^\/api\/safety\/([^/]+)\/check$/, (m, { now }) => {
     if (m[1] !== CRAFT) fail(404, 'no safety policy')

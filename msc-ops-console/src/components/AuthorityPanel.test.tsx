@@ -153,3 +153,27 @@ describe('AuthorityPanel safety history', () => {
     expect(screen.queryByRole('list', { name: '안전 상태 이력' })).not.toBeInTheDocument()
   })
 })
+
+describe('AuthorityPanel required approvals', () => {
+  it('shows N required from the safety policy next to the recorded count', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/anomalies')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/history')) return Promise.resolve(jsonResponse([]))
+      if (url.includes('/api/safety-policies/')) return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 3, body: { recoveryApprovals: 2 } }))
+      return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 1, body: { ...latchBody, approvals: [{ actor: 'operator1', decisionReference: 'r' }] } }))
+    }))
+    render(<AuthorityPanel offset={null} />)
+    await screen.findByText('2명 중 1명 승인 기록됨')
+  })
+
+  it('says the policy is not configured on 404 instead of showing a number', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/anomalies')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/history')) return Promise.resolve(jsonResponse([]))
+      if (url.includes('/api/safety-policies/')) return Promise.resolve(jsonResponse({ message: 'missing' }, 404))
+      return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 1, body: latchBody }))
+    }))
+    render(<AuthorityPanel offset={null} />)
+    await screen.findByText('정책 미설정')
+  })
+})

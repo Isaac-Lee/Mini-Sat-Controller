@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ProxyOptions } from 'vite'
 
-type Role = 'requester' | 'operator1' | 'operator2' | 'admin' | 'service'
+// No browser path impersonates SERVICE: time conversion uses the public /api/time endpoints.
+type Role = 'requester' | 'operator1' | 'operator2' | 'admin'
 
 function loadLocalEnv(): Record<string, string> {
   const path = resolve(import.meta.dirname, '../.local/msa.env')
@@ -36,15 +37,51 @@ const flightRules: RoleRule[] = [
   [/^\/api\/public-orbits\/import$/, 'POST', 'admin'],
   [/^\/api\/public-orbits\/[^/]+\/predictions$/, 'POST', 'operator1'],
   [/^\/api\/public-orbits\/[^/]+\/access-predictions$/, 'POST', 'operator1'],
-  [/^\/internal\/time\/utc-to-tai$/, 'POST', 'service'],
 ]
 
-const taskingRules: RoleRule[] = []
+// Simulation result registration is an operator review step (SimulationResultApi, OPERATOR).
+const taskingRules: RoleRule[] = [
+  [/^\/api\/requests\/[^/]+\/simulation-result$/, 'POST', 'operator1'],
+]
+
+// V1 simulation command flow (ADMIN/OPERATOR). Approvals are OPERATOR-only, never admin.
+const controlRules: RoleRule[] = [
+  [/^\/api\/command-loads\/[^/]+\/simulation-(?:release|delivery|execution)$/, 'GET', 'operator1'],
+  [/^\/api\/command-loads\/prepare$/, 'POST', 'operator1'],
+  [/^\/api\/command-loads\/[^/]+\/(?:approvals|schedule-check)$/, 'POST', 'operator1'],
+  [/^\/api\/command-loads\/[^/]+\/simulation-(?:release|dispatch|reception)$/, 'POST', 'operator1'],
+  [/^\/api\/command-loads\/[^/]+\/simulation-execution\/reconcile$/, 'POST', 'operator1'],
+  [/^\/api\/simulation-execution-evidence\/[^/]+\/[^/]+$/, 'GET', 'operator1'],
+]
+
+const productRules: RoleRule[] = [
+  [/^\/api\/products\/simulation-source-packages\/[^/]+$/, 'GET', 'operator1'],
+  [/^\/api\/products\/simulation-source-packages\/[^/]+\/sources\/[^/]+\/preview$/, 'POST', 'operator1'],
+]
+
+// Mission definition, simulator setup and station registration are ADMIN-only simulation
+// administration; everything else on these prefixes is an operator-level read or step.
+const missionRules: RoleRule[] = [
+  [/^\/api\/(?:simulation-time-correlations|authority-policies)$/, 'POST', 'admin'],
+]
+
+const groundRules: RoleRule[] = [[/^\/api\/stations$/, 'POST', 'admin']]
+
+const simulatorRules: RoleRule[] = [
+  [/^\/api\/simulation\/scenarios$/, 'POST', 'admin'],
+  // Scenario reads are ADMIN/SERVICE in SimulationScenarioApi, not OPERATOR.
+  [/^\/api\/simulation\/scenarios\/[^/]+$/, 'GET', 'admin'],
+  [/^\/api\/simulation\/scenarios\/[^/]+\/advance$/, 'POST', 'admin'],
+  [/^\/api\/simulation\/scenarios\/[^/]+\/loads\/[^/]+\/link$/, 'POST', 'admin'],
+  [/^\/api\/simulation\/stations$/, 'POST', 'admin'],
+]
 
 // /api/planning/requests/{id} has no @PreAuthorize (ownership/elevation is checked inside the
 // handler against the tasking-owned request), so 'requester' is fine as the default. The
 // input-attempts read requires ADMIN/OPERATOR/SERVICE explicitly.
 const planningRules: RoleRule[] = [
+  [/^\/api\/planning\/runs\/[^/]+\/(?:simulation-commit|simulation-downlink|solve)$/, 'POST', 'operator1'],
+  [/^\/api\/planning\/simulation-operations\/[^/]+$/, 'GET', 'operator1'],
   [/^\/api\/planning\/runs\/[^/]+\/camera\/\d+$/, 'GET', 'operator1'],
   [/^\/api\/planning\/input-attempts\/[^/]+\/runs$/, 'GET', 'operator1'],
   [/^\/api\/planning\/runs\/[^/]+(?:\/(?:resources|camera-work|illumination-work))?$/, 'GET', 'operator1'],
@@ -65,14 +102,20 @@ function roleFor(rules: RoleRule[], defaultRole: Role, method: string, path: str
 }
 
 const prefixConfig: Record<string, { rules: RoleRule[]; defaultRole: Role }> = {
-  '/fe-api/control': { rules: [[/^\/api\/command-loads\/[^/]+\/simulation-(?:release|delivery|execution)$/, 'GET', 'operator1']], defaultRole: 'requester' },
-  '/fe-api/product': { rules: [[/^\/api\/products\/simulation-source-packages\/[^/]+$/, 'GET', 'operator1']], defaultRole: 'requester' },
+  '/fe-api/control': { rules: controlRules, defaultRole: 'requester' },
+  '/fe-api/product': { rules: productRules, defaultRole: 'requester' },
   '/fe-api/reference': { rules: referenceRules, defaultRole: 'requester' },
   '/fe-api/flight': { rules: flightRules, defaultRole: 'requester' },
   '/fe-api/tasking': { rules: taskingRules, defaultRole: 'requester' },
   '/fe-api/planning': { rules: planningRules, defaultRole: 'requester' },
   '/fe-api/monitoring': { rules: monitoringRules, defaultRole: 'requester' },
   '/fe-api/anomaly': { rules: anomalyRules, defaultRole: 'operator1' },
+  // These services have no requester-facing paths (class-level OPERATOR/ADMIN/SERVICE). The
+  // simulator has no OPERATOR /api path at all, so its operator1 default only ever fails closed.
+  '/fe-api/mission': { rules: missionRules, defaultRole: 'operator1' },
+  '/fe-api/ground': { rules: groundRules, defaultRole: 'operator1' },
+  '/fe-api/acquisition': { rules: [], defaultRole: 'operator1' },
+  '/fe-api/simulator': { rules: simulatorRules, defaultRole: 'operator1' },
 }
 
 // Exported (pure, no env/network access) so role-mapping regressions are unit-testable without
@@ -92,7 +135,6 @@ export function missionServiceProxy(prefix: string, port: number): ProxyOptions 
     operator1: env.MSC_LOCAL_OPERATOR_PASSWORD,
     operator2: env.MSC_LOCAL_OPERATOR_PASSWORD,
     admin: env.MSC_LOCAL_ADMIN_PASSWORD,
-    service: env.MSC_SERVICE_PASSWORD,
   }
   const config = prefixConfig[prefix]
   if (!config) throw new Error(`No role configuration for proxy prefix ${prefix}`)
