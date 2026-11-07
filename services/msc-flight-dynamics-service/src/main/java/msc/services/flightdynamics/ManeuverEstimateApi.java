@@ -53,13 +53,26 @@ public class ManeuverEstimateApi {
             "mission-definition",
             "/internal/agility-models/" + craft + "/versions/" + request.agilityModelVersion(),
             JsonNode.class);
+    if (!agilityState.path("body").isObject())
+      throw ApiException.invalid("Agility model response has no body");
     var agility = json.convert(agilityState.get("body"), AgilityContracts.Model.class);
     if (agilityState.path("version").asLong() != request.agilityModelVersion()
         || !agility.spacecraftId().equals(request.spacecraftId()))
       throw ApiException.invalid("Agility model binding mismatch");
 
     List<RequiredTargetPointingSample> samples = new ArrayList<>();
-    for (var target : request.targets()) samples.add(sample(request.spacecraftId(), target));
+    String source = null;
+    for (var target : request.targets()) {
+      var result = pointing(request.spacecraftId(), target);
+      // Line-of-sight vectors from different orbit solutions or reference archives describe
+      // inconsistent satellite states, so their angle would not be one coherent slew.
+      String resultSource =
+          result.solutionId() + "|" + result.orbitSourceHash() + "|" + result.referenceDigest();
+      if (source == null) source = resultSource;
+      else if (!source.equals(resultSource))
+        throw ApiException.invalid("Pointing targets must share one orbit solution and reference");
+      samples.add(sample(result, target));
+    }
 
     List<Transition> transitions = new ArrayList<>();
     for (int i = 1; i < samples.size(); i++) {
@@ -102,6 +115,7 @@ public class ManeuverEstimateApi {
             request.agilityModelVersion(),
             agility,
             request.maximumAccelerationDegreesPerSecondSquared(),
+            ManeuverContracts.CALLER_SIMULATION_ASSUMPTION,
             request.targets(),
             transitions,
             transitions.stream().allMatch(Transition::feasible),
@@ -118,8 +132,7 @@ public class ManeuverEstimateApi {
         });
   }
 
-  /** The stored sample at exactly the requested instant; no interpolation between samples. */
-  private RequiredTargetPointingSample sample(String spacecraftId, PointingTarget target) {
+  private RequiredTargetPointingResult pointing(String spacecraftId, PointingTarget target) {
     var result =
         store
             .require(
@@ -129,6 +142,12 @@ public class ManeuverEstimateApi {
             .body();
     if (!result.spacecraftId().equals(spacecraftId))
       throw ApiException.invalid("Required-target-pointing result belongs to another spacecraft");
+    return result;
+  }
+
+  /** The stored sample at exactly the requested instant; no interpolation between samples. */
+  private static RequiredTargetPointingSample sample(
+      RequiredTargetPointingResult result, PointingTarget target) {
     return result.samples().stream()
         .filter(s -> s.instant().equals(target.instant()))
         .findFirst()

@@ -27,10 +27,13 @@ call it. `/internal/maneuver-estimates` requires SERVICE credentials.
 
 - 2..256 targets with strictly increasing TAI instants. Each instant must exactly match a
   sample of the referenced stored result; there is no interpolation.
-- Every referenced result must belong to `spacecraftId`.
+- Every referenced result must belong to `spacecraftId`, and all must share one orbit
+  `solutionId`, `orbitSourceHash` and `referenceDigest`; mixed sources are rejected.
 - The agility model is read from mission-definition at exactly `agilityModelVersion`.
 - The acceleration limit, in (0, 180] deg/s², is a caller-supplied simulation assumption
-  because the approved agility model has none. It is recorded on the result.
+  because the approved agility model has none. It is recorded on the result with
+  `maximumAccelerationSource: CALLER_SIMULATION_ASSUMPTION`, so a `feasible` flag always rests
+  on that caller choice.
 
 `GET /api/maneuver-estimates/{id}` returns the stored plan.
 

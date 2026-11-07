@@ -73,6 +73,19 @@ class ManeuverEstimateApiTest {
                       sample(1020, 22, 10, true),
                       sample(1100, 22, 40, true),
                       sample(1200, 22, 10, false))));
+          store.create(
+              "required-target-pointing",
+              "rtp-nanos",
+              pointing(
+                  "sim-test",
+                  "solution-1",
+                  List.of(
+                      sample(MissionInstant.tai(2000), 0, 10, true),
+                      sample(new MissionInstant(2010, 500_000_000, TimeScale.TAI), 180, 10, true))));
+          store.create(
+              "required-target-pointing",
+              "rtp-solution-2",
+              pointing("sim-test", "solution-2", List.of(sample(1010, 0, 10, true))));
           return store.create(
               "required-target-pointing",
               "rtp-other",
@@ -103,6 +116,7 @@ class ManeuverEstimateApiTest {
     assertEquals("SIMULATION", plan.environment());
     assertEquals("EME2000_LINE_OF_SIGHT", plan.frame());
     assertEquals(AGILITY, plan.agility());
+    assertEquals("CALLER_SIMULATION_ASSUMPTION", plan.maximumAccelerationSource());
     assertFalse(plan.feasible());
     var t = plan.transitions();
     assertEquals(4, t.size());
@@ -137,6 +151,26 @@ class ManeuverEstimateApiTest {
   }
 
   @Test
+  void antiparallelSlewKeepsSubSecondAvailableTime() {
+    var request =
+        new Request(
+            "sim-test",
+            3,
+            0.5,
+            List.of(
+                new PointingTarget("rtp-nanos", MissionInstant.tai(2000)),
+                new PointingTarget(
+                    "rtp-nanos", new MissionInstant(2010, 500_000_000, TimeScale.TAI))));
+    var t = json.convert(api.estimate(request, "nanos", actor).get("body"), Plan.class);
+    var transition = t.transitions().get(0);
+    assertEquals(10.5, transition.availableSeconds());
+    assertEquals(180, transition.slewAngleDegrees(), 1e-9);
+    // 180/2 + 2/0.5 = 94 s + 5 s settling.
+    assertEquals(99, transition.requiredSeconds(), 1e-9);
+    assertEquals(Set.of(Infeasibility.INSUFFICIENT_TIME), transition.infeasibilities());
+  }
+
+  @Test
   void isDeterministicAcrossIdempotencyKeys() {
     var first = api.estimate(request("rtp-1", 1000, 1010, 1020), "a", actor);
     var second = api.estimate(request("rtp-1", 1000, 1010, 1020), "b", actor);
@@ -162,6 +196,23 @@ class ManeuverEstimateApiTest {
                         new PointingTarget("rtp-other", MissionInstant.tai(1010)))),
                 "other",
                 actor));
+    assertThrows(
+        ApiException.class,
+        () ->
+            api.estimate(
+                new Request(
+                    "sim-test",
+                    3,
+                    0.5,
+                    List.of(
+                        new PointingTarget("rtp-1", MissionInstant.tai(1000)),
+                        new PointingTarget("rtp-solution-2", MissionInstant.tai(1010)))),
+                "mixed-solution",
+                actor));
+    when(http.get("mission-definition", AGILITY_PATH, JsonNode.class))
+        .thenReturn(json.tree(Map.of("version", 3)));
+    assertThrows(
+        ApiException.class, () -> api.estimate(request("rtp-1", 1000, 1010), "no-body", actor));
     agility(4, AGILITY);
     assertThrows(
         ApiException.class, () -> api.estimate(request("rtp-1", 1000, 1010), "version", actor));
@@ -188,11 +239,16 @@ class ManeuverEstimateApiTest {
 
   static RequiredTargetPointingResult pointing(
       String spacecraftId, List<RequiredTargetPointingSample> samples) {
+    return pointing(spacecraftId, "solution-1", samples);
+  }
+
+  static RequiredTargetPointingResult pointing(
+      String spacecraftId, String solutionId, List<RequiredTargetPointingSample> samples) {
     var query =
         new RequiredTargetPointingQuery(
             TARGET, new TimeWindow(MissionInstant.tai(1000), MissionInstant.tai(1200)), 10, 10);
     return new RequiredTargetPointingResult(
-        "solution-1",
+        solutionId,
         spacecraftId,
         "test-propagation",
         "test-pointing",
@@ -206,7 +262,11 @@ class ManeuverEstimateApiTest {
   /** Inertial line of sight rotated {@code azimuthDegrees} about EME2000 +Z from +X. */
   static RequiredTargetPointingSample sample(
       long tai, double azimuthDegrees, double offNadirDegrees, boolean visible) {
-    var instant = MissionInstant.tai(tai);
+    return sample(MissionInstant.tai(tai), azimuthDegrees, offNadirDegrees, visible);
+  }
+
+  static RequiredTargetPointingSample sample(
+      MissionInstant instant, double azimuthDegrees, double offNadirDegrees, boolean visible) {
     double a = Math.toRadians(azimuthDegrees);
     var los = new Trajectory.Vector(Math.cos(a), Math.sin(a), 0);
     return new RequiredTargetPointingSample(

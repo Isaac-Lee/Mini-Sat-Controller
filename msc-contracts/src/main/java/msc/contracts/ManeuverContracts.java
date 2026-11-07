@@ -26,6 +26,9 @@ public final class ManeuverContracts {
   public static final String FRAME = "EME2000_LINE_OF_SIGHT";
   public static final String MODEL = "rest-to-rest-bang-coast-bang-kinematic-v1";
 
+  /** Marks the acceleration limit as caller-chosen, not part of the approved agility model. */
+  public static final String CALLER_SIMULATION_ASSUMPTION = "CALLER_SIMULATION_ASSUMPTION";
+
   /** One stored required-target-pointing result and the exact sample instant to point at. */
   public record PointingTarget(String requiredTargetPointingId, MissionInstant instant) {
     public PointingTarget {
@@ -102,6 +105,7 @@ public final class ManeuverContracts {
       long agilityModelVersion,
       AgilityContracts.Model agility,
       double maximumAccelerationDegreesPerSecondSquared,
+      String maximumAccelerationSource,
       List<PointingTarget> targets,
       List<Transition> transitions,
       boolean feasible,
@@ -113,6 +117,8 @@ public final class ManeuverContracts {
       text(frame);
       text(model);
       Objects.requireNonNull(agility);
+      if (!CALLER_SIMULATION_ASSUMPTION.equals(maximumAccelerationSource))
+        throw new IllegalArgumentException("Acceleration source must be explicit");
       targets = List.copyOf(targets);
       transitions = List.copyOf(transitions);
       if (transitions.size() != targets.size() - 1)
