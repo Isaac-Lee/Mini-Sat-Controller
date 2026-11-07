@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 
-def render(images, namespace, orekit_volume):
+def render(images, namespace, orekit_volume, reference_archive_writer=False):
     items = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': namespace}}]
     for name, evidence in sorted(images.items()):
         labels = {'app.kubernetes.io/name': name, 'app.kubernetes.io/part-of': 'mini-sat-controller'}
@@ -30,6 +30,14 @@ def render(images, namespace, orekit_volume):
         if name == 'flight-dynamics':
             container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit', 'readOnly': True})
             volumes.append({'name': 'orekit', **orekit_volume})
+        if name == 'reference-data' and reference_archive_writer:
+            # Opt-in: needs a writable RWX (or co-scheduled) volume. Sole writer of /orekit/snapshots/<commit>/time-frames.zip (docs/backend/reference-archive.md).
+            # The in-process collector adds ~4 MB files + one Orekit EOP load per new monthly commit,
+            # inside the existing 256Mi request / 512Mi limit; measure heap during a real collection.
+            container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit/snapshots',
+                                              'subPath': 'snapshots'})
+            container['env'].append({'name': 'MSC_REFERENCE_ARCHIVE_DIR', 'value': '/orekit/snapshots'})
+            volumes.append({'name': 'orekit', **orekit_volume})
         items.append({'apiVersion': 'apps/v1', 'kind': 'Deployment',
                       'metadata': {'name': name, 'namespace': namespace, 'labels': labels},
                       'spec': {'replicas': 1, 'revisionHistoryLimit': 3, 'progressDeadlineSeconds': 600,
@@ -53,10 +61,12 @@ def main():
     parser.add_argument('--images', type=Path, required=True)
     parser.add_argument('--namespace', default='msc')
     parser.add_argument('--local-orekit-host-path', help='Only for the project-owned local kind node')
+    parser.add_argument('--reference-archive-writer', action='store_true',
+                        help='Mount the orekit volume snapshots/ subPath read-write into reference-data')
     args = parser.parse_args()
     volume = ({'hostPath': {'path': args.local_orekit_host_path, 'type': 'Directory'}}
               if args.local_orekit_host_path else {'persistentVolumeClaim': {'claimName': 'msc-orekit'}})
-    print(json.dumps(render(json.loads(args.images.read_text()), args.namespace, volume), indent=2))
+    print(json.dumps(render(json.loads(args.images.read_text()), args.namespace, volume, args.reference_archive_writer), indent=2))
 
 
 if __name__ == '__main__':

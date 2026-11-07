@@ -54,7 +54,7 @@ public class SimulationProductContentApi {
         .orElseThrow(() -> ApiException.missing("Source not part of product"));
   }
 
-  private ResponseEntity<StreamingResponseBody> stream(
+  ResponseEntity<StreamingResponseBody> stream(
       String reference, MediaType type, long size, String hash, String purpose) {
     var response =
         ResponseEntity.ok()
@@ -102,22 +102,11 @@ public class SimulationProductContentApi {
         "SYNTHETIC_SOURCE_INDEX");
   }
 
-  @PostMapping("/api/products/simulation-source-packages/{id}/sources/{receipt}/preview")
-  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
-  public JsonNode preview(
-      @PathVariable UUID id,
-      @PathVariable String receipt,
-      @RequestHeader("Idempotency-Key") String key,
-      Authentication actor)
-      throws IOException {
-    String scope = "simulation-byte-preview:" + actor.getName(),
-        identity = json.fingerprint(List.of(id.toString(), receipt));
-    var request = List.of(id.toString(), receipt);
-    var replay = store.replay(scope, key, request);
-    if (replay.isPresent()) return replay.get();
-    var prior = store.find("simulation-byte-preview", identity, Preview.class);
-    if (prior.isPresent()) return store.idempotent(scope, key, request, () -> prior.get());
-    var source = source(id, receipt);
+  record Rendered(
+      SimulationProductApi.Artifact source, byte[] png, int width, int height, int validSamples) {}
+
+  /** Verifies the whole owned source (size/hash) and renders its bounded byte-layout PNG. */
+  Rendered render(SimulationProductApi.Artifact source) throws IOException {
     if (source.byteCount() < 1 || source.byteCount() > 67108864)
       throw ApiException.invalid("Unsupported source size");
     int count = (int) Math.min(source.byteCount(), 65536);
@@ -145,7 +134,28 @@ public class SimulationProductContentApi {
       image.getRaster().setSample(i % width, i / width, 0, Byte.toUnsignedInt(samples[i]));
     var bytes = new ByteArrayOutputStream();
     if (!ImageIO.write(image, "png", bytes)) throw new IOException("PNG writer unavailable");
-    byte[] png = bytes.toByteArray();
+    return new Rendered(source, bytes.toByteArray(), width, height, count);
+  }
+
+  @PostMapping("/api/products/simulation-source-packages/{id}/sources/{receipt}/preview")
+  @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','SERVICE')")
+  public JsonNode preview(
+      @PathVariable UUID id,
+      @PathVariable String receipt,
+      @RequestHeader("Idempotency-Key") String key,
+      Authentication actor)
+      throws IOException {
+    String scope = "simulation-byte-preview:" + actor.getName(),
+        identity = json.fingerprint(List.of(id.toString(), receipt));
+    var request = List.of(id.toString(), receipt);
+    var replay = store.replay(scope, key, request);
+    if (replay.isPresent()) return replay.get();
+    var prior = store.find("simulation-byte-preview", identity, Preview.class);
+    if (prior.isPresent()) return store.idempotent(scope, key, request, () -> prior.get());
+    var rendered = render(source(id, receipt));
+    byte[] png = rendered.png();
+    var source = rendered.source();
+    int width = rendered.width(), height = rendered.height(), count = rendered.validSamples();
     String hash = HexFormat.of().formatHex(digest().digest(png));
     objects.ensureBucket();
     String reference;
@@ -210,7 +220,7 @@ public class SimulationProductContentApi {
         "SYNTHETIC_BYTE_PREVIEW_NOT_EARTH_IMAGERY");
   }
 
-  private static MessageDigest digest() {
+  static MessageDigest digest() {
     try {
       return MessageDigest.getInstance("SHA-256");
     } catch (NoSuchAlgorithmException e) {

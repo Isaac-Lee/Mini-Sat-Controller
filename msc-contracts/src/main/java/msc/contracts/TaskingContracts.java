@@ -129,7 +129,11 @@ public final class TaskingContracts {
       String acquisitionReference,
       double unionCoverageFraction,
       double cloudFraction,
-      String assessmentReference) {
+      String assessmentReference,
+      // Nullable for pre-L0 producers; INTEGRITY_ONLY_SYNTHETIC means coverage/cloud are
+      // simulation-declared, never measured from imagery.
+      String scope,
+      String environment) {
     public QualityEvidence {
       text(requestId);
       text(productReference);
@@ -143,6 +147,9 @@ public final class TaskingContracts {
           || cloudFraction < 0
           || cloudFraction > 1)
         throw new IllegalArgumentException("Invalid measured quality evidence");
+      if ((scope == null) != (environment == null)
+          || ("INTEGRITY_ONLY_SYNTHETIC".equals(scope) && !"SIMULATION".equals(environment)))
+        throw new IllegalArgumentException("Quality evidence scope requires its environment");
     }
   }
 }
