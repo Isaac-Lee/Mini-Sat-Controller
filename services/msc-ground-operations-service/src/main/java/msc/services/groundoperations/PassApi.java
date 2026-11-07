@@ -38,6 +38,13 @@ public class PassApi {
     var request = Map.of("bookingId", id);
     var replay = store.replay(scope, key, request);
     if (replay.isPresent()) return replay.get();
+    // A retried begin returns the existing session even if the booking was cancelled since.
+    if (store.find("pass", SimulatedGroundStation.passId(id), PassRecord.class).isPresent())
+      return store.idempotent(
+          scope,
+          key,
+          request,
+          () -> store.require("pass", SimulatedGroundStation.passId(id), PassRecord.class));
     var booking = store.require("booking", id, Booking.class).body();
     var opportunity =
         new ContactOpportunity(

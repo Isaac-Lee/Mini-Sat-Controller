@@ -58,10 +58,14 @@ not a real ground station; every pass record carries `environment: "SIMULATION"`
   CONFIRMED and the Simulator still holds it, the outcome is `COMPLETED`, with
   `contactEnd` set to the window end and `accountedBytes` set to the booked
   `requestedMegabytes` × 10^6 (decimal MB, rounded half-up). That is the booked
-  volume, not a measured reception. Otherwise the outcome is `BOOKING_LOST`, with no
+  volume, not a measured reception. It is credited in full even when `contactStart`
+  (the begin time) is late in the window. Otherwise the outcome is `BOOKING_LOST`, with no
   contact end and 0 bytes. This covers a cancellation during the pass and a Simulator
   404. A report for a session that is already REPORTED returns the first report and
-  writes nothing.
+  writes nothing. Cancelling a booking whose pass is still ACTIVE after the window
+  end returns 409: report the pass first, so the outcome reflects the contact rather
+  than when the report was filed. A repeated begin returns the existing session even
+  after the booking was cancelled.
 
 There are no SNR, link-budget or other RF figures.
 

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import msc.contracts.GroundContracts.*;
 import msc.domain.groundoperations.GroundOperations.*;
@@ -43,6 +44,7 @@ class PassApiTest {
   Json json;
   ServiceHttp http;
   PassApi api;
+  GroundApi ground;
 
   @BeforeEach
   void setup() {
@@ -51,7 +53,8 @@ class PassApiTest {
             postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     Flyway.configure().dataSource(ds).load().migrate();
     var db = new JdbcTemplate(ds);
-    db.execute("TRUNCATE state_head,state_history,outbox,idempotency");
+    db.execute(
+        "TRUNCATE state_head,state_history,outbox,idempotency,station_allocation,booking_dispatch");
     json = new Json(JsonMapper.builder().findAndAddModules().build());
     msc.ports.Clock clock = () -> MissionInstant.tai(now.get());
     store =
@@ -59,6 +62,7 @@ class PassApiTest {
             db, new TransactionTemplate(new DataSourceTransactionManager(ds)), json, clock);
     http = mock(ServiceHttp.class);
     api = new PassApi(store, new SimulatedGroundStation(store, http, json, clock));
+    ground = new GroundApi(store, db, http, clock);
   }
 
   Booking booking(String id, BookingStatus status) {
@@ -181,5 +185,63 @@ class PassApiTest {
         HttpStatus.CONFLICT,
         status(() -> port.begin(new StationBooking("b5", "b5", BookingState.TENTATIVE))));
     assertEquals(12_500_001, SimulatedGroundStation.bytes(12.5000005));
+  }
+
+  @Test
+  void cancelIsGuardedAfterTheWindowAndRetriedBeginSurvivesCancel() {
+    seed("b6", BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+    var active = begin("b6", "k1");
+    ground.cancel("b6", "c1", actor);
+    assertEquals(active, begin("b6", "k2"), "retried begin after cancel keeps the session");
+
+    seed("b7", BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+    begin("b7", "k3");
+    now.set(200);
+    assertEquals(HttpStatus.CONFLICT, status(() -> ground.cancel("b7", "c2", actor)));
+    assertEquals(PassOutcome.COMPLETED, report("pass-b7", "b7", "r").outcome());
+    ground.cancel("b7", "c3", actor);
+    assertEquals(PassOutcome.COMPLETED, api.pass("pass-b7").outcome());
+  }
+
+  @Test
+  void concurrentReportsWriteOneRevision() throws Exception {
+    seed("b8", BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+    begin("b8", "k");
+    now.set(200);
+    var entered = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    when(http.get(eq("simulator"), eq("/internal/station-bookings/b8"), eq(Booking.class)))
+        .thenAnswer(
+            call -> {
+              entered.countDown();
+              release.await(10, TimeUnit.SECONDS);
+              return booking("b8", BookingStatus.CONFIRMED);
+            })
+        .thenReturn(booking("b8", BookingStatus.CONFIRMED));
+    var executor = Executors.newSingleThreadExecutor();
+    try {
+      var slow = executor.submit(() -> report("pass-b8", "b8", "slow"));
+      assertTrue(entered.await(10, TimeUnit.SECONDS));
+      var fast = report("pass-b8", "b8", "fast");
+      release.countDown();
+      assertEquals(fast, slow.get(10, TimeUnit.SECONDS));
+    } finally {
+      executor.shutdownNow();
+    }
+    assertEquals(2, store.history("pass", "pass-b8").size());
+  }
+
+  @Test
+  void providerMismatchAndIdempotencyKeyReuseAreRejected() {
+    seed("b9", BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+    begin("b9", "k");
+    now.set(200);
+    when(http.get(eq("simulator"), eq("/internal/station-bookings/b9"), eq(Booking.class)))
+        .thenReturn(booking("other", BookingStatus.CONFIRMED));
+    assertEquals(HttpStatus.BAD_GATEWAY, status(() -> report("pass-b9", "b9", "r")));
+    assertEquals(PassStatus.ACTIVE, api.pass("pass-b9").status());
+
+    seed("b10", BookingStatus.CONFIRMED, BookingStatus.CONFIRMED);
+    assertEquals(HttpStatus.CONFLICT, status(() -> begin("b10", "k")), "key reused on b10");
   }
 }
