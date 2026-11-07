@@ -9,7 +9,6 @@ import { STATUS_CLASS, STATUS_LABEL } from '../requestStatus'
 interface Props {
   selectedRequest: RequestState | null
   onOpenWorkflow: () => void
-  demoMode: boolean
   offset: TaiUtcOffset | null
   onSelectRequest: (request: RequestState | null) => void
 }
@@ -28,7 +27,7 @@ function areaText(area: Area): string {
   return `W ${area.west}, S ${area.south}, E ${area.east}, N ${area.north}`
 }
 
-export function RequestPanel({ demoMode, offset, onSelectRequest, selectedRequest, onOpenWorkflow }: Props) {
+export function RequestPanel({ offset, onSelectRequest, selectedRequest, onOpenWorkflow }: Props) {
   const [items, setItems] = useState<RequestState[]>([])
   const [listPhase, setListPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [listError, setListError] = useState('')
@@ -55,7 +54,6 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
   const reviseInFlight = useRef(false)
 
   async function loadList() {
-    if (demoMode) return
     setListPhase('loading')
     setListError('')
     try {
@@ -69,13 +67,13 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
   }
 
   useEffect(() => {
-    if (!demoMode) loadList()
+    loadList()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode])
+  }, [])
 
   async function checkPlace() {
     const query = target.trim()
-    if (demoMode || !query) return
+    if (!query) return
     placeQuery.current = query
     setPlaceResult(null)
     setPlaceError('')
@@ -89,7 +87,6 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (demoMode) return
     setSubmitBusy(true)
     setSubmitMessage('')
     try {
@@ -191,16 +188,6 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
         setActionMessage('취소 실패: ' + errorMessage(error))
       }
     }
-  }
-
-  if (demoMode) {
-    return (
-      <section className="panel-block">
-        <h2>촬영 요청</h2>
-        <div className="demo-banner">데모 모드 — 실제 요청을 제출하지 않습니다.</div>
-        <div className="hint">데모 예시 요청: Daejeon AOI, 우선순위 50, 상태 ACCEPTED (가상 데이터).</div>
-      </section>
-    )
   }
 
   return (

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, ApiError, newIdempotencyKey } from './api/client'
+import { api, ApiError, newIdempotencyKey, setDemoBackend } from './api/client'
 import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, TrackedSatelliteRow } from './api/types'
-import { demoDocument } from './demoData'
+import { DEMO_TLE_URL } from './demo/backend'
+import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
 import { Timeline } from './components/Timeline'
 import { LiveClock } from './components/LiveClock'
@@ -55,8 +56,18 @@ function anchorUtcMs(anchorUtcIso: string, anchorTai: MissionInstant, target: Mi
   return anchorMs + (target.seconds - anchorTai.seconds) * 1000 + (target.nanos - anchorTai.nanos) / 1e6
 }
 
+// `?demo` in the URL selects demo mode for the whole page load. Switching modes reloads the page,
+// which also stops every flow still in flight, so no call started in one mode reaches the other.
+function switchMode(on: boolean) {
+  window.location.assign(on ? '?demo' : window.location.pathname)
+}
+
 export default function App() {
-  const [demoMode, setDemoMode] = useState(false)
+  const [demoMode] = useState(() => {
+    const on = new URLSearchParams(window.location.search).has('demo')
+    setDemoBackend(on)
+    return on
+  })
   const [tab, setTab] = useState<Tab>('overview')
 
   const [phase, setPhase] = useState<Phase>('idle')
@@ -83,15 +94,10 @@ export default function App() {
   const [inspectionCraft, setInspectionCraft] = useState('sim-spaceeye-t1')
   const [selectedRequest, setSelectedRequest] = useState<RequestState | null>(null)
 
-  const taiUtcOffset = useTaiUtcOffset(!demoMode)
+  const taiUtcOffset = useTaiUtcOffset()
 
-  const activeDoc = demoMode ? demoDocument : document_
-  const track = activeDoc?.groundTrack ?? []
-  const times = demoMode
-    ? track.map((_, i) => new Date(1_800_000_000_000 + i * 60_000))
-    : anchor
-      ? track.map((p) => new Date(anchorUtcMs(anchor.utcIso, anchor.tai, p.time)))
-      : []
+  const track = document_?.groundTrack ?? []
+  const times = anchor ? track.map((p) => new Date(anchorUtcMs(anchor.utcIso, anchor.tai, p.time))) : []
 
   async function loadReferenceData() {
     setPhase('loading')
@@ -118,9 +124,9 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!demoMode) loadReferenceData()
+    loadReferenceData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode])
+  }, [])
 
   async function requestCollection() {
     setCollectBusy(true)
@@ -219,12 +225,19 @@ export default function App() {
         <div className="target-chip">공개 궤도: {DISPLAY_NAME} / NORAD {NORAD_ID}</div>
         <LiveClock />
         <label className="demo-toggle">
-          <input type="checkbox" checked={demoMode} onChange={(e) => setDemoMode(e.target.checked)} />
+          <input type="checkbox" checked={demoMode} onChange={(e) => switchMode(e.target.checked)} />
           데모 모드
         </label>
       </header>
 
-      {demoMode && <div className="demo-banner">데모 모드 — 실제 데이터 아님. 모든 탭이 고정 예시만 표시합니다.</div>}
+      {demoMode && (
+        <div className="demo-banner">
+          데모 모드 — 브라우저 안의 가짜 백엔드가 응답합니다. 실제 서비스·DB에 연결하지 않으며 새로고침하면 처음으로 돌아갑니다.
+          요청을 제출하면 몇 초마다 RECEIVED → ACCEPTED → SCHEDULED → FULFILLED로 진행합니다.
+        </div>
+      )}
+
+      {demoMode && <DemoCallLog />}
 
       <nav className="tabbar" role="tablist" aria-label="운영 콘솔 탭">
         {TABS.map((t) => (
@@ -255,38 +268,36 @@ export default function App() {
       </nav>
 
       {tab === 'overview' && <main className="layout single overview-layout" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview"><OverviewPanel onNavigate={setTab} /></main>}
-      {tab === 'workflow' && <main className="layout single overview-layout" id="panel-workflow" role="tabpanel" aria-labelledby="tab-workflow"><WorkflowPanel onInspectCraft={(craft, safety) => { setInspectionCraft(craft); setTab(safety ? 'authority' : 'monitor') }} demoMode={demoMode} selectedRequest={selectedRequest} offset={taiUtcOffset.offset} /></main>}
+      {tab === 'workflow' && <main className="layout single overview-layout" id="panel-workflow" role="tabpanel" aria-labelledby="tab-workflow"><WorkflowPanel onInspectCraft={(craft, safety) => { setInspectionCraft(craft); setTab(safety ? 'authority' : 'monitor') }} selectedRequest={selectedRequest} offset={taiUtcOffset.offset} /></main>}
 
       {tab === 'map' && (
         <main className="layout" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
           <div className="map-pane">
-            <MapView track={track} currentIndex={times.length ? index : null} requestArea={demoMode ? null : selectedRequest?.body.area ?? null} />
+            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} />
           </div>
 
           <aside className="side-panel">
-            {!demoMode && (
-              <section className="panel-block">
-                <h2>위성 선택</h2>
-                <div className="satellite-row selected">{DISPLAY_NAME} (NORAD {NORAD_ID})</div>
-                <button onClick={loadReferenceData} disabled={phase === 'loading'} aria-busy={phase === 'loading'}>
-                  조회 새로고침
-                </button>
-              </section>
-            )}
+            <section className="panel-block">
+              <h2>위성 선택</h2>
+              <div className="satellite-row selected">{DISPLAY_NAME} (NORAD {NORAD_ID})</div>
+              <button onClick={loadReferenceData} disabled={phase === 'loading'} aria-busy={phase === 'loading'}>
+                조회 새로고침
+              </button>
+            </section>
 
-            {!demoMode && phase === 'loading' && <section className="panel-block">불러오는 중...</section>}
-            {!demoMode && phase === 'auth_error' && (
+            {phase === 'loading' && <section className="panel-block">불러오는 중...</section>}
+            {phase === 'auth_error' && (
               <section className="panel-block status-error" role="alert">인증 실패: {errorText}</section>
             )}
-            {!demoMode && phase === 'connection_error' && (
+            {phase === 'connection_error' && (
               <section className="panel-block status-error" role="alert">서비스 연결 실패: {errorText}</section>
             )}
-            {!demoMode && phase === 'not_found' && (
+            {phase === 'not_found' && (
               <section className="panel-block status-warn">데이터 없음: 수집된 공개 궤도 스냅샷이 없습니다.</section>
             )}
-            {!demoMode && phase === 'error' && <section className="panel-block status-error" role="alert">오류: {errorText}</section>}
+            {phase === 'error' && <section className="panel-block status-error" role="alert">오류: {errorText}</section>}
 
-            {!demoMode && snapshot && (
+            {snapshot && (
               <section className="panel-block">
                 <h2>공개 궤도 스냅샷</h2>
                 <dl>
@@ -304,18 +315,16 @@ export default function App() {
               </section>
             )}
 
-            {!demoMode && (
-              <section className="panel-block">
-                <h2>외부 궤도 수집</h2>
-              <p><a href="/fe-api/flight/api/tracked-satellites/63229/tle.txt" download="spaceeye-t1-derived.tle">보존 GP에서 파생한 TLE 다운로드</a></p>
-                <button onClick={requestCollection} disabled={collectBusy} aria-busy={collectBusy}>
-                  CelesTrak 수집 요청
-                </button>
-                {collectMessage && <p className="hint" aria-live="polite">{collectMessage}</p>}
-              </section>
-            )}
+            <section className="panel-block">
+              <h2>외부 궤도 수집</h2>
+              <p><a href={demoMode ? DEMO_TLE_URL : '/fe-api/flight/api/tracked-satellites/63229/tle.txt'} download="spaceeye-t1-derived.tle">보존 GP에서 파생한 TLE 다운로드</a></p>
+              <button onClick={requestCollection} disabled={collectBusy} aria-busy={collectBusy}>
+                CelesTrak 수집 요청
+              </button>
+              {collectMessage && <p className="hint" aria-live="polite">{collectMessage}</p>}
+            </section>
 
-            {!demoMode && snapshot && (
+            {snapshot && (
               <section className="panel-block">
                 <h2>Flight Dynamics 가져오기</h2>
                 {flightOrbit === 'missing' && (
@@ -331,7 +340,7 @@ export default function App() {
               </section>
             )}
 
-            {!demoMode && flightOrbit !== 'missing' && flightOrbit !== 'unknown' && (
+            {flightOrbit !== 'missing' && flightOrbit !== 'unknown' && (
               <section className="panel-block">
                 <h2>지상궤적 예측</h2>
                 <button onClick={generatePrediction} disabled={predictBusy} aria-busy={predictBusy}>
@@ -357,14 +366,13 @@ export default function App() {
               {times.length > 0 && (
                 <>
                   <div>선택 시각 위치 (예측값, 실측 아님)</div>
-                  {!demoMode &&
-                    (nowInCoverage ? (
-                      <div className="status-ok">현재 시각이 예측 구간 내에 있습니다.</div>
-                    ) : (
-                      <div className="status-warn">
-                        현재 시각은 예측 구간 밖입니다 — 표시된 위치는 실시간 위치가 아닙니다.
-                      </div>
-                    ))}
+                  {nowInCoverage ? (
+                    <div className="status-ok">현재 시각이 예측 구간 내에 있습니다.</div>
+                  ) : (
+                    <div className="status-warn">
+                      현재 시각은 예측 구간 밖입니다 — 표시된 위치는 실시간 위치가 아닙니다.
+                    </div>
+                  )}
                 </>
               )}
             </section>
@@ -374,14 +382,13 @@ export default function App() {
 
       {tab === 'request' && (
         <main className="layout single" id="panel-request" role="tabpanel" aria-labelledby="tab-request">
-          <RequestPanel selectedRequest={selectedRequest} onOpenWorkflow={() => setTab('workflow')} demoMode={demoMode} offset={taiUtcOffset.offset} onSelectRequest={setSelectedRequest} />
+          <RequestPanel selectedRequest={selectedRequest} onOpenWorkflow={() => setTab('workflow')} offset={taiUtcOffset.offset} onSelectRequest={setSelectedRequest} />
         </main>
       )}
 
       {tab === 'timeline' && (
         <main className="layout single" id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline">
           <TimelinePanel
-            demoMode={demoMode}
             offset={taiUtcOffset.offset}
             selectedRequest={selectedRequest}
             flightOrbit={flightOrbit}
@@ -391,19 +398,19 @@ export default function App() {
 
       {tab === 'monitor' && (
         <main className="layout single" id="panel-monitor" role="tabpanel" aria-labelledby="tab-monitor">
-          <MonitorPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} demoMode={demoMode} offset={taiUtcOffset.offset} />
+          <MonitorPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} offset={taiUtcOffset.offset} />
         </main>
       )}
 
       {tab === 'authority' && (
         <main className="layout single" id="panel-authority" role="tabpanel" aria-labelledby="tab-authority">
-          <AuthorityPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} demoMode={demoMode} offset={taiUtcOffset.offset} />
+          <AuthorityPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} offset={taiUtcOffset.offset} />
         </main>
       )}
 
       {tab === 'product' && (
         <main className="layout single" id="panel-product" role="tabpanel" aria-labelledby="tab-product">
-          <ProductPanel demoMode={demoMode} requestId={selectedRequest?.id ?? null} offset={taiUtcOffset.offset} />
+          <ProductPanel requestId={selectedRequest?.id ?? null} offset={taiUtcOffset.offset} />
         </main>
       )}
 

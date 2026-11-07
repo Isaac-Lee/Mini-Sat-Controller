@@ -1,4 +1,5 @@
-import { request } from './client'
+import { isDemoBackend, request } from './client'
+import { demoSourceUrl } from '../demo/backend'
 import type { MissionInstant } from './types'
 
 export interface SimulationSource {
@@ -37,5 +38,5 @@ export const productsApi = {
   result: (requestId: string) =>
     request<{ id: string; version: number; body: SimulationResult }>(resultPath(requestId)),
   sourceUrl: (requestId: string, receiptId: string, preview = false) =>
-    `${resultPath(requestId)}/sources/${encodeURIComponent(receiptId)}/${preview ? 'preview' : 'content'}`,
+    isDemoBackend() ? demoSourceUrl(preview) : `${resultPath(requestId)}/sources/${encodeURIComponent(receiptId)}/${preview ? 'preview' : 'content'}`,
 }

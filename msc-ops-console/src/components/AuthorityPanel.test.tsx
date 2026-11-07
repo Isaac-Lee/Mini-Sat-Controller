@@ -20,14 +20,6 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe('AuthorityPanel approval semantics', () => {
-  it('never calls fetch in demo mode', () => {
-    const fetchSpy = vi.fn()
-    vi.stubGlobal('fetch', fetchSpy)
-    render(<AuthorityPanel demoMode={true} offset={null} />)
-    expect(screen.getByText(/데모 모드/)).toBeInTheDocument()
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
   it('approved:true with frozen:true is shown as "still frozen, one approval recorded", never as "approval complete"', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url.includes('/api/safety/sim-spaceeye-t1/history')) return Promise.resolve(jsonResponse([]))
@@ -44,7 +36,7 @@ describe('AuthorityPanel approval semantics', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     await waitFor(() => expect(screen.getByText(/동결됨/)).toBeInTheDocument())
 
     fireEvent.change(screen.getByLabelText(/결정 근거/), { target: { value: 'operator judgment' } })
@@ -72,7 +64,7 @@ describe('AuthorityPanel approval semantics', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     await waitFor(() => expect(screen.getByText(/동결됨/)).toBeInTheDocument())
 
     fireEvent.change(screen.getByLabelText(/결정 근거/), { target: { value: 'operator judgment' } })
@@ -92,7 +84,7 @@ describe('AuthorityPanel spacecraft binding', () => {
       return Promise.resolve(jsonResponse({ id, version: 1, body: { ...latchBody, spacecraftId: id } }))
     })
     vi.stubGlobal('fetch', fetchMock)
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     await screen.findByText(/동결됨/)
     fireEvent.change(screen.getByLabelText(/결정 근거/), { target: { value: 'craft A decision' } })
     fireEvent.change(screen.getByLabelText('위성 ID'), { target: { value: 'craft-b' } })
@@ -118,7 +110,7 @@ describe('AuthorityPanel spacecraft binding', () => {
         body: { ...latchBody, spacecraftId: 'craft-b', reasons: ['CRAFT_B_REASON'] } }))
       return old
     }))
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     fireEvent.change(screen.getByLabelText('위성 ID'), { target: { value: 'craft-b' } })
     fireEvent.click(screen.getByRole('button', { name: '조회' }))
     await screen.findByText('CRAFT_B_REASON')
@@ -139,7 +131,7 @@ describe('AuthorityPanel safety history', () => {
       ]))
       return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 2, body: latchBody }))
     }))
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     const list = await screen.findByRole('list', { name: '안전 상태 이력' })
     const rows = list.querySelectorAll('li')
     expect(rows).toHaveLength(2)
@@ -155,7 +147,7 @@ describe('AuthorityPanel safety history', () => {
       ]))
       return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 1, body: latchBody }))
     }))
-    render(<AuthorityPanel demoMode={false} offset={null} />)
+    render(<AuthorityPanel offset={null} />)
     await screen.findByText(/이력 조회 실패/)
     expect(screen.getByText(/동결됨/)).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: '안전 상태 이력' })).not.toBeInTheDocument()

@@ -21,7 +21,6 @@ const CONFIDENCE_CLASS: Record<Confidence, string> = {
 
 interface Props {
   initialSpacecraftId?: string
-  demoMode: boolean
   offset: TaiUtcOffset | null
 }
 
@@ -30,14 +29,13 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
-export function MonitorPanel({ demoMode, offset, initialSpacecraftId = 'sim-spaceeye-t1' }: Props) {
+export function MonitorPanel({ offset, initialSpacecraftId = 'sim-spaceeye-t1' }: Props) {
   const [spacecraftId, setSpacecraftId] = useState(initialSpacecraftId)
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'not_found' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
   const [view, setView] = useState<EstimateView | null>(null)
 
   async function load() {
-    if (demoMode) return
     setPhase('loading')
     setErrorText('')
     try {
@@ -56,24 +54,9 @@ export function MonitorPanel({ demoMode, offset, initialSpacecraftId = 'sim-spac
   }
 
   useEffect(() => {
-    if (!demoMode) load()
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode])
-
-  if (demoMode) {
-    return (
-      <section className="panel-block">
-        <h2>모니터링</h2>
-        <div className="demo-banner">데모 모드 — 아래는 예시 데이터이며 실제 관측이 아닙니다.</div>
-        <dl>
-          <dt>Confidence</dt>
-          <dd className="status-ok">FRESH (데모)</dd>
-          <dt>Mode</dt>
-          <dd>NOMINAL (데모)</dd>
-        </dl>
-      </section>
-    )
-  }
+  }, [])
 
   const estimate = view?.estimate.body
   const accepted = estimate?.accepted

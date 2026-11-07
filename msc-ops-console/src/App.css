@@ -42,6 +42,17 @@
   font-weight: 600;
 }
 
+.demo-call-log {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #334155;
+}
+.demo-call-log ol {
+  max-height: 12rem;
+  overflow: auto;
+  margin: 0.3rem 0;
+}
+
 .layout {
   flex: 1;
   display: flex;
