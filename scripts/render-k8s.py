@@ -30,7 +30,7 @@ def autoscaler(name, namespace, labels):
                                   'scaleDown': {'stabilizationWindowSeconds': 300}}}}
 
 
-def render(images, namespace, orekit_volume, hpa_pool_size=None):
+def render(images, namespace, orekit_volume, hpa_pool_size=None, reference_archive_writer=False):
     """hpa_pool_size enables HPAs and pins MSC_DATABASE_POOL_SIZE so the connection budget holds."""
     items = [{'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': namespace}}]
     for name, evidence in sorted(images.items()):
@@ -57,6 +57,14 @@ def render(images, namespace, orekit_volume, hpa_pool_size=None):
             container['env'].append({'name': 'MSC_DATABASE_POOL_SIZE', 'value': str(hpa_pool_size)})
         if name == 'flight-dynamics':
             container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit', 'readOnly': True})
+            volumes.append({'name': 'orekit', **orekit_volume})
+        if name == 'reference-data' and reference_archive_writer:
+            # Opt-in: needs a writable RWX (or co-scheduled) volume. Sole writer of /orekit/snapshots/<commit>/time-frames.zip (docs/backend/reference-archive.md).
+            # The in-process collector adds ~4 MB files + one Orekit EOP load per new monthly commit,
+            # inside the existing 256Mi request / 512Mi limit; measure heap during a real collection.
+            container['volumeMounts'].append({'name': 'orekit', 'mountPath': '/orekit/snapshots',
+                                              'subPath': 'snapshots'})
+            container['env'].append({'name': 'MSC_REFERENCE_ARCHIVE_DIR', 'value': '/orekit/snapshots'})
             volumes.append({'name': 'orekit', **orekit_volume})
         items.append({'apiVersion': 'apps/v1', 'kind': 'Deployment',
                       'metadata': {'name': name, 'namespace': namespace, 'labels': labels},
@@ -153,6 +161,8 @@ def main():
                         help='PostgreSQL max_connections shared by all service databases (server default 100)')
     parser.add_argument('--local-metrics-server', action='store_true',
                         help='Append metrics-server for the project-owned local kind node only')
+    parser.add_argument('--reference-archive-writer', action='store_true',
+                        help='Mount the orekit volume snapshots/ subPath read-write into reference-data')
     args = parser.parse_args()
     volume = ({'hostPath': {'path': args.local_orekit_host_path, 'type': 'Directory'}}
               if args.local_orekit_host_path else {'persistentVolumeClaim': {'claimName': 'msc-orekit'}})
@@ -164,7 +174,8 @@ def main():
         if needed > args.database_max_connections:
             parser.error(f'worst-case {needed} database connections exceed --database-max-connections '
                          f'{args.database_max_connections}; lower --database-pool-size')
-    manifest = render(images, args.namespace, volume, args.database_pool_size if args.hpa else None)
+    manifest = render(images, args.namespace, volume, args.database_pool_size if args.hpa else None,
+                      args.reference_archive_writer)
     if args.local_metrics_server:
         manifest['items'] += local_metrics_server()
     print(json.dumps(manifest, indent=2))

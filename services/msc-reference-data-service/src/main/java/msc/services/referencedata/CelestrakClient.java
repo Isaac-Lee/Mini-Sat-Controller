@@ -56,7 +56,16 @@ public class CelestrakClient {
     final java.util.concurrent.CompletableFuture<byte[]> result =
         new java.util.concurrent.CompletableFuture<>();
     final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    final int limit;
     java.util.concurrent.Flow.Subscription subscription;
+
+    LimitedBody() {
+      this(65536);
+    }
+
+    LimitedBody(int limit) {
+      this.limit = limit;
+    }
 
     public java.util.concurrent.CompletionStage<byte[]> getBody() {
       return result;
@@ -69,9 +78,9 @@ public class CelestrakClient {
 
     public void onNext(java.util.List<java.nio.ByteBuffer> items) {
       for (var item : items) {
-        if (bytes.size() + item.remaining() > 65536) {
+        if (bytes.size() + item.remaining() > limit) {
           subscription.cancel();
-          result.completeExceptionally(new IOException("GP response exceeds 64 KiB"));
+          result.completeExceptionally(new IOException("Response exceeds " + limit + " bytes"));
           return;
         }
         byte[] chunk = new byte[item.remaining()];

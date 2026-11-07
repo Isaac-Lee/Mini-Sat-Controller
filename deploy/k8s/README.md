@@ -26,6 +26,10 @@ Flight Dynamics mounts a read-only `msc-orekit` PVC at `/orekit`. Supply the
 approved archive path and SHA256 through configuration. Multi-node deployments
 must make the same pinned archive available on every eligible node. The local
 renderer override uses the dedicated kind node's read-only mount instead.
+Reference-archive collection is opt-in: `render-k8s.py --reference-archive-writer` also mounts
+the volume's `snapshots/` subPath read-write into reference-data. This needs a writable RWX
+volume, or co-scheduled pods, with `snapshots/` created in advance. A read-only kind mount does
+not qualify. See [reference archive](../../docs/backend/reference-archive.md).
 
 Resource requests/limits are initial local validation settings, not production
 capacity measurements. Database pool size must be budgeted across all replicas,

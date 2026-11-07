@@ -630,4 +630,106 @@ class SimulationScenarioApiIT {
             .asText());
     assertEquals(1, observations(scenario.id()));
   }
+
+  @Test
+  void toyRunRecordsReplayableTelemetryWithoutChangingScenario() {
+    var request = fixture();
+    assertEquals(200, post(request, UUID.randomUUID().toString(), "admin").getStatusCode().value());
+    assertEquals(
+        200,
+        commandPost(request.id(), "loads", command(request, 20, 10), "toy-load", "service")
+            .getStatusCode()
+            .value());
+    var start =
+        new SimulationToyRunApi.Start(
+            UUID.randomUUID(),
+            42,
+            200,
+            50,
+            80,
+            1,
+            List.of(new TimeWindow(MissionInstant.tai(1005), MissionInstant.tai(1015))),
+            0);
+    var headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.set("Idempotency-Key", "toy");
+    String path = "/api/simulation/scenarios/" + request.id() + "/toy-runs";
+    var admin = client.withBasicAuth("admin", PASSWORD);
+    var run = admin.postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class);
+    assertEquals(200, run.getStatusCode().value());
+    assertEquals("TOY_MODEL", run.getBody().path("fidelity").asText());
+    assertEquals("SIMULATION", run.getBody().path("environment").asText());
+    var samples =
+        json.convert(run.getBody().path("samples"), SimulationToyPhysics.Sample[].class);
+    // From tick 10 in 50-tick steps; the IMAGE completes at tick 120 (step ending 160).
+    assertEquals(
+        List.of(60L, 110L, 160L, 200L),
+        Arrays.stream(samples).map(SimulationToyPhysics.Sample::tick).toList());
+    assertEquals(
+        List.of(true, true, false, false),
+        Arrays.stream(samples).map(SimulationToyPhysics.Sample::linkAvailable).toList());
+    assertEquals(21, samples[2].frame().storageMb());
+    // Projected frames are never published to Monitoring as observed telemetry.
+    for (var s : samples)
+      assertTrue(
+          store
+              .find(
+                  "simulation-telemetry",
+                  request.spacecraftId() + ":" + s.frame().id(),
+                  JsonNode.class)
+              .isEmpty());
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM outbox WHERE event_type='TelemetryReceived'", Integer.class));
+    var replay =
+        admin.getForEntity(
+            "/api/simulation/toy-runs/" + start.runId() + "/replay", JsonNode.class);
+    assertEquals(run.getBody().path("samples"), replay.getBody().path("samples"));
+    assertEquals(
+        run.getBody(),
+        admin.postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class).getBody());
+    headers.set("Idempotency-Key", "toy-again");
+    assertEquals(
+        409,
+        admin.postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class)
+            .getStatusCode()
+            .value());
+    var operator = client.withBasicAuth("operator1", PASSWORD);
+    assertEquals(
+        403,
+        operator
+            .postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class)
+            .getStatusCode()
+            .value());
+    assertEquals(
+        403,
+        operator
+            .getForEntity("/api/simulation/toy-runs/" + start.runId() + "/replay", JsonNode.class)
+            .getStatusCode()
+            .value());
+    var window = start.visibility();
+    for (var bad :
+        List.of(
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 10, 50, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 0, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 1011, 1, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 101, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 80, 0, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 80, 1, window, 2))) {
+      headers.set("Idempotency-Key", UUID.randomUUID().toString());
+      assertEquals(
+          400,
+          admin
+              .postForEntity(path, new HttpEntity<>(bad, headers), JsonNode.class)
+              .getStatusCode()
+              .value());
+      assertTrue(
+          store.find("simulation-toy-run", bad.runId().toString(), JsonNode.class).isEmpty());
+    }
+    var scenario = store.require("simulation-scenario", request.id().toString(), Scenario.class);
+    assertEquals(1, scenario.version());
+    assertEquals(10, scenario.body().currentTick());
+    assertEquals(20, scenario.body().reservoirs().storedMegabytes());
+  }
 }

@@ -93,9 +93,12 @@ locks, checks the state again under lock and emits invalidation transactionally.
 
 `ProductQualityAssessed` carries request revision, product/acquisition/assessment
 references and coverage/cloud measurements. Tasking checks its effective criteria
-before transitioning to partial/full fulfillment. The live verifier injects synthetic
-quality events solely to test this consumer; there is no implemented product
-pipeline or actual fulfillment evidence yet. `PlanningRejected` records evidence
+before transitioning to partial/full fulfillment. Nullable `scope`/`environment` fields
+label the evidence; Product's synthetic L0 step publishes `INTEGRITY_ONLY_SYNTHETIC` /
+`SIMULATION` with simulation-declared (not measured) coverage/cloud fractions, and Tasking
+prefixes the request reason with the scope ([simulation-product-l0.md](simulation-product-l0.md)).
+The live verifier still injects its own synthetic quality events; no physical fulfillment
+evidence exists. `PlanningRejected` records evidence
 without turning temporary infeasibility into a permanent rejection.
 
 ## Verification
