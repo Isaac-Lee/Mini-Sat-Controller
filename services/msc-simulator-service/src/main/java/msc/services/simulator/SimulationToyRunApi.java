@@ -14,8 +14,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * TOY_MODEL projection of a scenario's pending loads. It records a seeded event log and emits
- * labelled simulation telemetry, but never advances the scenario clock or changes its ledger.
+ * TOY_MODEL projection of a scenario's pending loads. It records a seeded event log only: the
+ * projected frames are returned, never published as TelemetryReceived (they are future, modeled
+ * values, not observations), and the scenario clock and ledger are never changed.
  */
 @RestController
 public class SimulationToyRunApi {
@@ -39,12 +40,10 @@ public class SimulationToyRunApi {
 
   private final StateStore store;
   private final Json json;
-  private final TelemetrySimulationApi telemetry;
 
-  public SimulationToyRunApi(StateStore store, Json json, TelemetrySimulationApi telemetry) {
+  public SimulationToyRunApi(StateStore store, Json json) {
     this.store = store;
     this.json = json;
-    this.telemetry = telemetry;
   }
 
   @PostMapping("/api/simulation/scenarios/{id}/toy-runs")
@@ -55,7 +54,7 @@ public class SimulationToyRunApi {
       @RequestHeader("Idempotency-Key") String key,
       Authentication actor) {
     return store.idempotent(
-        "simulation-toy-run:" + actor.getName(),
+        "simulation-toy-run:" + id + ":" + actor.getName(),
         key,
         request,
         () -> {
@@ -65,6 +64,7 @@ public class SimulationToyRunApi {
           var scenario = store.require("simulation-scenario", id.toString(), Scenario.class).body();
           long from = scenario.currentTick();
           var pending = new ArrayList<Entry>();
+          // Same 500-load read bound as advance; the per-scenario command cap is also 500.
           for (var load : store.list("simulation-load:" + id, 500))
             for (var e : json.convert(load.body(), Ledger.class).entries())
               if (e.status() == Status.PENDING
@@ -98,9 +98,6 @@ public class SimulationToyRunApi {
             throw ApiException.invalid("Invalid toy run: " + invalid.getMessage());
           }
           store.create("simulation-toy-run", request.runId().toString(), log);
-          // Frames join this transaction: the log and its telemetry commit or roll back together.
-          for (var s : samples)
-            telemetry.emit(s.frame(), request.runId() + ":" + s.tick(), actor);
           return new Run(
               request.runId(),
               SimulationToyPhysics.FIDELITY,

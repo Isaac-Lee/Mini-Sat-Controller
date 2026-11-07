@@ -23,7 +23,8 @@ the pinned mission profile, derives a ground-station link availability flag from
 TAI visibility windows, and records a seeded event log. All randomness is drawn once into that
 log; replay consumes only the log, so replaying a recorded log reproduces identical telemetry.
 
-The toy run never advances a scenario clock or command ledger, and its telemetry is emitted
-through the same simulation telemetry adapter with a `simulator:toy-model:` source. It is not a
+The toy run never advances a scenario clock or command ledger. Its frames use the existing
+telemetry `Frame` contract with a `simulator:toy-model:` source but are not published as
+`TelemetryReceived`: projected values must not enter Monitoring as observations. It is not a
 validated power, orbit, attitude or RF model and models no link budget (dB, SNR, data rate). Its
 reproducibility claim covers one log on one implementation version, not cross-simulator replay.

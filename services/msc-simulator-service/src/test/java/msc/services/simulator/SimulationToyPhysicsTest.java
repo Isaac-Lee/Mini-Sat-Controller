@@ -171,6 +171,18 @@ class SimulationToyPhysicsTest {
   }
 
   @Test
+  void unsupportedOperationIsNotReportedAsBatteryFloor() {
+    var maneuver = op("burn", Operation.MANEUVER, 300, 3600, 0);
+    var step =
+        SimulationToyPhysics.replay(
+                SimulationToyPhysics.record(setup(19, 0, List.of(maneuver), 0), 1))
+            .get(2);
+    assertEquals("NOT_SUPPORTED", step.completions().get(0).outcome());
+    assertEquals(Mode.NOMINAL, step.frame().mode());
+    assertEquals(19.3, step.frame().batteryWh(), 1e-9);
+  }
+
+  @Test
   void rechargeIsCappedAtBatteryCapacity() {
     var samples =
         SimulationToyPhysics.replay(SimulationToyPhysics.record(setup(100, 0, List.of(), 0), 1));

@@ -669,15 +669,19 @@ class SimulationScenarioApiIT {
         List.of(true, true, false, false),
         Arrays.stream(samples).map(SimulationToyPhysics.Sample::linkAvailable).toList());
     assertEquals(21, samples[2].frame().storageMb());
+    // Projected frames are never published to Monitoring as observed telemetry.
     for (var s : samples)
-      assertEquals(
-          s.frame(),
+      assertTrue(
           store
-              .require(
+              .find(
                   "simulation-telemetry",
                   request.spacecraftId() + ":" + s.frame().id(),
-                  msc.domain.monitoring.OperationalTelemetry.Frame.class)
-              .body());
+                  JsonNode.class)
+              .isEmpty());
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM outbox WHERE event_type='TelemetryReceived'", Integer.class));
     var replay =
         admin.getForEntity(
             "/api/simulation/toy-runs/" + start.runId() + "/replay", JsonNode.class);
@@ -691,13 +695,38 @@ class SimulationScenarioApiIT {
         admin.postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class)
             .getStatusCode()
             .value());
+    var operator = client.withBasicAuth("operator1", PASSWORD);
     assertEquals(
         403,
-        client
-            .withBasicAuth("operator1", PASSWORD)
+        operator
             .postForEntity(path, new HttpEntity<>(start, headers), JsonNode.class)
             .getStatusCode()
             .value());
+    assertEquals(
+        403,
+        operator
+            .getForEntity("/api/simulation/toy-runs/" + start.runId() + "/replay", JsonNode.class)
+            .getStatusCode()
+            .value());
+    var window = start.visibility();
+    for (var bad :
+        List.of(
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 10, 50, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 0, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 1011, 1, 80, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 101, 1, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 80, 0, window, 0),
+            new SimulationToyRunApi.Start(UUID.randomUUID(), 1, 200, 50, 80, 1, window, 2))) {
+      headers.set("Idempotency-Key", UUID.randomUUID().toString());
+      assertEquals(
+          400,
+          admin
+              .postForEntity(path, new HttpEntity<>(bad, headers), JsonNode.class)
+              .getStatusCode()
+              .value());
+      assertTrue(
+          store.find("simulation-toy-run", bad.runId().toString(), JsonNode.class).isEmpty());
+    }
     var scenario = store.require("simulation-scenario", request.id().toString(), Scenario.class);
     assertEquals(1, scenario.version());
     assertEquals(10, scenario.body().currentTick());

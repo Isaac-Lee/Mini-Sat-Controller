@@ -143,6 +143,7 @@ public final class SimulationToyPhysics {
       if (event.tick() != tick)
         throw new IllegalArgumentException("Event log tick order does not match setup");
       // Constant recharge over the step (hours = ticks / ticksPerSecond / 3600), capped at full.
+      // Credited before the step's completions, so floor decisions depend on stepTicks.
       double hours = (double) (tick - previous) / c.ticksPerSecond() / 3600.0;
       double battery =
           Math.min(
@@ -156,14 +157,15 @@ public final class SimulationToyPhysics {
         // Toy: the whole operation energy is debited at completion, like the other effects.
         double energy =
             op.catalog().resources().powerWatts() * op.catalog().durationSeconds() / 3600.0;
-        if (battery - energy < mission.minimumBatteryWh()) {
+        var effect =
+            SimulatorOperationEffects.complete(mission, reservoirs, op.catalog(), op.profile());
+        boolean applied = effect.outcome() == Outcome.APPLIED;
+        // Only an operation that would otherwise apply can breach the floor; it then has no effect.
+        if (applied && battery - energy < mission.minimumBatteryWh()) {
           floorHit = true;
           completions.add(new Completion(id, op.completionTick(), BATTERY_FLOOR, 0));
           continue;
         }
-        var effect =
-            SimulatorOperationEffects.complete(mission, reservoirs, op.catalog(), op.profile());
-        boolean applied = effect.outcome() == Outcome.APPLIED;
         if (applied) battery -= energy;
         reservoirs = effect.after();
         completions.add(
