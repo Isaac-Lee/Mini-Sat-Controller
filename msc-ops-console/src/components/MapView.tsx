@@ -2,11 +2,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
 import type { Area, GroundPoint } from '../api/types'
+import type { FootprintOverlay } from '../api/footprints'
 
 interface Props {
   track: GroundPoint[]
   currentIndex: number | null
   requestArea?: Area | null
+  footprints?: FootprintOverlay[]
 }
 
 // Splits the polyline wherever the ground track crosses the +/-180 deg antimeridian,
@@ -26,12 +28,13 @@ function splitAtAntimeridian(track: GroundPoint[]): [number, number][][] {
   return segments
 }
 
-export function MapView({ track, currentIndex, requestArea }: Props) {
+export function MapView({ track, currentIndex, requestArea, footprints = [] }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const trackLayerRef = useRef<L.LayerGroup | null>(null)
   const markerRef = useRef<L.CircleMarker | null>(null)
   const areaLayerRef = useRef<L.LayerGroup | null>(null)
+  const footprintLayerRef = useRef<L.LayerGroup | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -43,6 +46,7 @@ export function MapView({ track, currentIndex, requestArea }: Props) {
     mapRef.current = map
     trackLayerRef.current = L.layerGroup().addTo(map)
     areaLayerRef.current = L.layerGroup().addTo(map)
+    footprintLayerRef.current = L.layerGroup().addTo(map)
     return () => {
       map.remove()
       mapRef.current = null
@@ -99,12 +103,39 @@ export function MapView({ track, currentIndex, requestArea }: Props) {
       .addTo(layer)
   }, [requestArea])
 
+  useEffect(() => {
+    const layer = footprintLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    for (const overlay of footprints)
+      for (const polygon of overlay.polygons)
+        L.polygon(polygon.corners, { color: '#ea580c', weight: 1, fillOpacity: 0.05, dashArray: '4 3' })
+          .bindTooltip(
+            `SIMULATION 샘플 footprint · 후보 ${polygon.candidateId} · TAI ${polygon.instant.seconds}s` +
+              (polygon.coverageFraction === null ? '' : ` · 근사 커버리지 ${(polygon.coverageFraction * 100).toFixed(1)}%`),
+          )
+          .addTo(layer)
+  }, [footprints])
+
+  const polygonCount = footprints.reduce((n, o) => n + o.polygons.length, 0)
+  const notes = [...new Set(footprints.map((o) => o.approximationNote))]
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} role="img" aria-label="위성 지상궤적 및 요청 영역 지도" style={{ width: '100%', height: '100%' }} />
       {requestArea && (
         <div className="map-legend">
-          요청 영역(초록 사각형) · 출처: {requestArea.sourceReference} · 센서 투영 오버레이는 이 지도에 미연결 (샘플 평가는 임무 흐름에서 조회)
+          요청 영역(초록 사각형) · 출처: {requestArea.sourceReference}
+          {polygonCount > 0 ? (
+            <>
+              {' '}· <strong>SIMULATION · 샘플 footprint, 연속 노출 아님</strong> (주황 점선 {polygonCount}개)
+              {notes.map((note) => (
+                <div key={note} className="hint">{note}</div>
+              ))}
+            </>
+          ) : (
+            ' · 표시할 샘플 footprint 없음'
+          )}
         </div>
       )}
       {requestArea && (

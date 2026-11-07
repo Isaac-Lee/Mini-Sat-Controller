@@ -4,6 +4,7 @@ import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, Tr
 import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
+import { loadFootprints, type FootprintOverlay } from './api/footprints'
 import { Timeline } from './components/Timeline'
 import { LiveClock } from './components/LiveClock'
 import { RequestPanel } from './components/RequestPanel'
@@ -93,6 +94,20 @@ export default function App() {
 
   const [inspectionCraft, setInspectionCraft] = useState('sim-spaceeye-t1')
   const [selectedRequest, setSelectedRequest] = useState<RequestState | null>(null)
+  const [footprints, setFootprints] = useState<FootprintOverlay[]>([])
+
+  // Sampled footprints of the selected request's newest planning run (SIMULATION evidence only).
+  // Failures leave the overlay empty rather than drawing anything unverified.
+  const selectedRequestId = selectedRequest?.id ?? null
+  useEffect(() => {
+    let current = true
+    setFootprints([])
+    if (selectedRequestId)
+      loadFootprints(selectedRequestId)
+        .then((result) => { if (current) setFootprints(result.overlays) })
+        .catch(() => {})
+    return () => { current = false }
+  }, [selectedRequestId])
 
   const taiUtcOffset = useTaiUtcOffset()
 
@@ -273,7 +288,7 @@ export default function App() {
       {tab === 'map' && (
         <main className="layout" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
           <div className="map-pane">
-            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} />
+            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} footprints={footprints} />
           </div>
 
           <aside className="side-panel">
