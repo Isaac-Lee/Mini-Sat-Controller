@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ProxyOptions } from 'vite'
 
-type Role = 'requester' | 'operator1' | 'operator2' | 'admin' | 'service'
+// No browser path impersonates SERVICE: time conversion uses the public /api/time endpoints.
+type Role = 'requester' | 'operator1' | 'operator2' | 'admin'
 
 function loadLocalEnv(): Record<string, string> {
   const path = resolve(import.meta.dirname, '../.local/msa.env')
@@ -36,7 +37,6 @@ const flightRules: RoleRule[] = [
   [/^\/api\/public-orbits\/import$/, 'POST', 'admin'],
   [/^\/api\/public-orbits\/[^/]+\/predictions$/, 'POST', 'operator1'],
   [/^\/api\/public-orbits\/[^/]+\/access-predictions$/, 'POST', 'operator1'],
-  [/^\/internal\/time\/utc-to-tai$/, 'POST', 'service'],
 ]
 
 const taskingRules: RoleRule[] = []
@@ -92,7 +92,6 @@ export function missionServiceProxy(prefix: string, port: number): ProxyOptions 
     operator1: env.MSC_LOCAL_OPERATOR_PASSWORD,
     operator2: env.MSC_LOCAL_OPERATOR_PASSWORD,
     admin: env.MSC_LOCAL_ADMIN_PASSWORD,
-    service: env.MSC_SERVICE_PASSWORD,
   }
   const config = prefixConfig[prefix]
   if (!config) throw new Error(`No role configuration for proxy prefix ${prefix}`)

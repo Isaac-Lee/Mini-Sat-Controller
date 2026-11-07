@@ -331,7 +331,15 @@ const routes: Array<[string, string, RegExp, Handler]> = [
     db.imported = true
     return { id: ORBIT.id, status: 'IMPORTED' }
   }],
-  ['flight', 'POST', /^\/internal\/time\/utc-to-tai$/, (_, { body }) => tai(Date.parse((body as { utc: string }).utc + 'Z'))],
+  // Demo conversion uses a fixed TAI-UTC of 37 s (no leap-second table); labelled DEMO in the archive field.
+  ['flight', 'POST', /^\/api\/time\/utc-to-tai$/, (_, { body }) => ({
+    conversions: (body as { utc: string[] }).utc.map((utc) => ({ tai: tai(Date.parse(utc + 'Z')), utc })),
+    referenceArchiveSha256: 'DEMO-fixed-37s',
+  })],
+  ['flight', 'POST', /^\/api\/time\/tai-to-utc$/, (_, { body }) => ({
+    conversions: (body as { instants: MissionInstant[] }).instants.map((i) => ({ tai: i, utc: new Date(taiMs(i)).toISOString().replace('Z', '') })),
+    referenceArchiveSha256: 'DEMO-fixed-37s',
+  })],
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/predictions$/, (m, { body }) => {
     const { horizon, stepSeconds } = body as { horizon: { start: MissionInstant; end: MissionInstant }; stepSeconds: number }
     const id = `demo-prediction-${++db.seq}`
