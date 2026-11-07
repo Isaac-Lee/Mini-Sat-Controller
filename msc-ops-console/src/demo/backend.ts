@@ -13,6 +13,8 @@ import type {
   SafetyLatchState,
   Submission,
 } from '../api/types'
+import { jday, sunPos } from 'satellite.js'
+import { findAccessWindows, satrecFromElements, subSatellitePoint, sunElevationDegrees, type AccessCriteria, type Site } from '../orbit/sgp4'
 
 const NORAD_ID = 63229
 const CRAFT = 'sim-spaceeye-t1'
@@ -105,6 +107,11 @@ const placesFor = (target: string) => {
   }))
 }
 
+const ORBIT_EPOCH_MS = Date.now() - 6 * 3_600_000
+// A typical Earth-observation sun-synchronous orbit: descending node at 10:30 local solar time,
+// i.e. ascending node at 22:30, which puts the node 157.5° east of the sun's right ascension.
+const DEMO_RAAN_DEGREES = ((sunPos(jday(new Date(ORBIT_EPOCH_MS))).rtasc * 180) / Math.PI + 157.5 + 360) % 360
+
 const ORBIT: OrbitSnapshot = {
   id: 'demo-orbit-snapshot-1',
   provider: 'DEMO (CelesTrak 형식 흉내, 실제 수집 아님)',
@@ -115,11 +122,11 @@ const ORBIT: OrbitSnapshot = {
     noradId: NORAD_ID,
     name: 'SPACEEYE-T1',
     internationalDesignator: '25001A',
-    epochUtc: new Date(Date.now() - 6 * 3_600_000).toISOString().slice(0, 19),
+    epochUtc: new Date(ORBIT_EPOCH_MS).toISOString().slice(0, 19),
     meanMotionRevolutionsPerDay: 15.2,
     eccentricity: 0.0001,
     inclinationDegrees: 97.4,
-    ascendingNodeDegrees: 120,
+    ascendingNodeDegrees: Math.round(DEMO_RAAN_DEGREES * 1e4) / 1e4,
     pericenterDegrees: 90,
     meanAnomalyDegrees: 270,
     bstar: 0,
@@ -129,19 +136,29 @@ const ORBIT: OrbitSnapshot = {
   },
 }
 
-// A plain sinusoidal ground track — clearly synthetic, never derived from an orbit model.
+// The demo satellite is real SGP4 over made-up (but physically plausible) sun-synchronous elements.
+const SATREC = satrecFromElements(ORBIT.elements)
+const MODEL = 'SGP4 (브라우저 satellite.js, 데모 궤도 요소)'
+
 function groundTrack(start: MissionInstant, count: number, stepSeconds: number): GroundPoint[] {
-  return Array.from({ length: count }, (_, i) => {
-    const t = (i * stepSeconds) / 5_700
-    return {
-      time: { ...start, seconds: start.seconds + i * stepSeconds },
-      latitudeDegrees: 80 * Math.sin(t * Math.PI * 2),
-      longitudeDegrees: ((((-60 + t * 336) % 360) + 540) % 360) - 180,
-      altitudeMeters: 500_000,
-      referenceDigest: 'demo',
-    }
-  })
+  return Array.from({ length: count }, (_, i) => ({
+    time: { ...start, seconds: start.seconds + i * stepSeconds },
+    ...subSatellitePoint(SATREC, taiMs(start) + i * stepSeconds * 1000),
+    referenceDigest: 'demo',
+  }))
 }
+
+// The demo enforces the same limits as Flight Dynamics (GeneralPerturbationsAdapter and
+// OrekitAccessPredictor), so a request the real service would reject fails here too.
+const EPOCH_TAI_SECONDS = tai(ORBIT_EPOCH_MS).seconds
+function requireEpochValidity(horizon: { start: MissionInstant; end: MissionInstant }, message: string) {
+  if ([horizon.start, horizon.end].some((i) => Math.abs(i.seconds - EPOCH_TAI_SECONDS) > 7 * 86_400)) fail(400, message)
+}
+
+// Same query the console sends for point imaging (TimelinePanel, ImagingOpportunities).
+const IMAGING: AccessCriteria = { minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
+const MINIMUM_SUN_ELEVATION_DEGREES = 10
+const centre = (area: Area): Site => ({ latitudeDegrees: (area.south + area.north) / 2, longitudeDegrees: (area.west + area.east) / 2, altitudeMeters: 0 })
 
 // ---- requests ----
 
@@ -266,7 +283,9 @@ function demoFootprint(evaluationId: string, now: number) {
     widthMeters,
     heightMeters,
   }
-  const offset = evaluationId.endsWith('-1') ? -1 : 1
+  // One row per evaluated candidate, ordered as the camera route lists them, so two overlays never coincide.
+  const evaluated = candidates(requestFor(owner(evaluationId), now).r).filter((c) => c.feasibility.feasible)
+  const offset = evaluated.findIndex((c) => c.id.value.replace('~cand-', '~fp-') === evaluationId) === 0 ? -1 : 1
   const samples = [-2, -1, 0, 1, 2].map((k) => {
     const e = k * widthMeters * 0.15
     const n = offset * heightMeters * 0.1
@@ -300,16 +319,34 @@ const ids = (reqId: string, rev: number) => ({
 })
 const owner = (derived: string) => derived.split('~')[0]
 
-function candidates(reqId: string, createdMs: number) {
-  return [1, 2, 3].map((n) => {
-    const start = createdMs + n * 95 * 60_000
+// Candidates are the first three propagated passes over the AOI centre within 7 days of planning;
+// a pass is rejected when the sun is too low to image. Cached because the scan is not free.
+const candidateCache = new Map<string, ReturnType<typeof computeCandidates>>()
+function candidates(r: DemoRequest) {
+  // Request ids repeat after a reset, so the stage start (new on create and revise) is part of the key.
+  const key = `${r.id}:${r.stageStartMs}`
+  const cached = candidateCache.get(key) ?? computeCandidates(r)
+  candidateCache.set(key, cached)
+  return cached
+}
+function computeCandidates(r: DemoRequest) {
+  if (!r.area) return []
+  const site = centre(r.area)
+  const from = r.stageStartMs + STAGE_MS.RECEIVED
+  return findAccessWindows(SATREC, site, from, from + 7 * 86_400_000, IMAGING).slice(0, 3).map((w, i) => {
+    const sunDegrees = sunElevationDegrees(site, w.bestMs)
+    const feasible = sunDegrees >= MINIMUM_SUN_ELEVATION_DEGREES
+    const sun = Math.round(sunDegrees * 10) / 10
     return {
-      id: { value: `${reqId}~cand-${n}` },
-      activity: { window: { start: tai(start), end: tai(start + 12_000) }, definitionId: { value: 'IMAGE_CAPTURE' }, definitionVersion: 3 },
-      feasibility: n === 2
-        ? { feasible: false, issues: ['SUN_BELOW_MINIMUM_ELEVATION'], sunElevationDegrees: -12 }
-        : { feasible: true, issues: [], sunElevationDegrees: 30 - n, offNadirDegrees: 8 * n },
-      phase: n === 2 ? 'REJECTED' : 'PROPOSED',
+      id: { value: `${r.id}~cand-${i + 1}` },
+      activity: { window: { start: tai(w.startMs), end: tai(w.endMs) }, definitionId: { value: 'IMAGE_CAPTURE' }, definitionVersion: 3 },
+      feasibility: {
+        feasible,
+        issues: feasible ? [] : ['SUN_BELOW_MINIMUM_ELEVATION'],
+        sunElevationDegrees: sun,
+        offNadirDegrees: Math.round(w.bestOffNadirDegrees * 10) / 10,
+      },
+      phase: feasible ? 'PROPOSED' : 'REJECTED',
       mode: 'SIMULATION',
     }
   })
@@ -334,7 +371,7 @@ function commandEvidence(reqId: string, kind: 'image' | 'downlink', part: string
         checks: { safety: { clear: true }, authority: { clear: true } },
         prepared: {
           load: { scheduleVersion: 1, scheduleKey: { spacecraftId: { value: CRAFT } } },
-          sources: { schedule: { assignments: [{ requestId: { value: reqId }, runId: { value: id.run }, candidateId: { value: `${reqId}~cand-1` } }] } },
+          sources: { schedule: { assignments: [{ requestId: { value: reqId }, runId: { value: id.run }, candidateId: { value: candidates(r).find((c) => c.feasibility.feasible)?.id.value ?? 'none' } }] } },
         },
       },
     }
@@ -377,29 +414,32 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   })],
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/predictions$/, (m, { body }) => {
     const { horizon, stepSeconds } = body as { horizon: { start: MissionInstant; end: MissionInstant }; stepSeconds: number }
+    const span = horizon.end.seconds - horizon.start.seconds
+    if (stepSeconds < 1 || stepSeconds > 3600 || span > 7 * 86_400 || Math.ceil(span / stepSeconds) > 20_000)
+      fail(400, 'Prediction must fit seven days and 20000 samples with step 1..3600 seconds')
+    requireEpochValidity(horizon, 'Public GP epoch is more than seven days from prediction; refresh reference')
     const id = `demo-prediction-${++db.seq}`
     db.predictions.set(id, { ...horizon, stepSeconds })
     const sampleCount = Math.floor((horizon.end.seconds - horizon.start.seconds) / stepSeconds) + 1
-    return { id, body: { id, solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: 'DEMO-SINE (합성, 실제 궤도 아님)', frame: 'EME2000', coverage: horizon, stepSeconds, sampleCount, referenceDigest: 'demo', objectReference: `demo://${id}` } }
+    return { id, body: { id, solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: MODEL, frame: 'TEME', coverage: horizon, stepSeconds, sampleCount, referenceDigest: 'demo', objectReference: `demo://${id}` } }
   }],
   ['flight', 'GET', /^\/api\/predictions\/([^/]+)\/samples$/, (m): EphemerisDocument => {
     const p = db.predictions.get(m[1]) ?? fail(404, 'prediction not found')
     const count = Math.floor((p.end.seconds - p.start.seconds) / p.stepSeconds) + 1
     return {
-      prediction: { solutionId: ORBIT.id, model: 'DEMO-SINE (합성, 실제 궤도 아님)', frame: 'EME2000', coverage: { start: p.start, end: p.end }, stepSeconds: p.stepSeconds, samples: [] },
+      prediction: { solutionId: ORBIT.id, model: MODEL, frame: 'TEME', coverage: { start: p.start, end: p.end }, stepSeconds: p.stepSeconds, samples: [] },
       groundTrack: groundTrack(p.start, count, p.stepSeconds),
       referenceDigest: 'demo',
     }
   }],
   ['flight', 'POST', /^\/api\/public-orbits\/([^/]+)\/access-predictions$/, (m, { body }) => {
     const query = body as AccessQuery
-    const start = taiMs(query.horizon.start)
-    const end = taiMs(query.horizon.end)
-    const windows = [95, 190, 1_330]
-      .map((min) => ({ startMs: start + min * 60_000, endMs: start + (min + 7) * 60_000 }))
-      .filter((w) => w.endMs <= end)
+    if (query.kind !== 'POINT_IMAGING') fail(400, 'demo supports POINT_IMAGING only')
+    if (query.horizon.end.seconds - query.horizon.start.seconds > 86_400) fail(400, 'Access search is limited to 24 hours per request')
+    requireEpochValidity(query.horizon, 'Initial orbit is outside model validity interval')
+    const windows = findAccessWindows(SATREC, query.target, taiMs(query.horizon.start), taiMs(query.horizon.end), query)
       .map((w) => ({ start: tai(w.startMs), end: tai(w.endMs) }))
-    return { id: `demo-access-${++db.seq}`, body: { solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: 'DEMO', referenceDigest: 'demo', query, rootToleranceSeconds: 1, maximumCheckSeconds: 60, windows } }
+    return { id: `demo-access-${++db.seq}`, body: { solutionId: m[1], spacecraftId: 'SPACEEYE-T1', model: MODEL, referenceDigest: 'demo', query, rootToleranceSeconds: 1, maximumCheckSeconds: 10, windows } }
   }],
 
   // Tasking
@@ -480,25 +520,31 @@ const routes: Array<[string, string, RegExp, Handler]> = [
   }],
   ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)$/, (m, { now }) => {
     const { r } = requestFor(owner(m[1]), now)
-    return { id: m[1], requestId: r.id, requestRevision: r.submissions.length, spacecraftId: CRAFT, sourceHashes: { orbit: sha('orbit') }, run: { startedAt: tai(r.stageStartMs + STAGE_MS.RECEIVED), candidates: candidates(r.id, r.stageStartMs), opportunities: [], decisions: [] } }
+    return { id: m[1], requestId: r.id, requestRevision: r.submissions.length, spacecraftId: CRAFT, sourceHashes: { orbit: sha('orbit') }, run: { startedAt: tai(r.stageStartMs + STAGE_MS.RECEIVED), candidates: candidates(r), opportunities: [], decisions: [] } }
   }],
-  ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/resources$/, (m) => ({
+  ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/resources$/, (m, { now }) => ({
     id: m[1],
     body: {
       scope: 'MODEL_BASED_PREDICTION_NOT_RESERVATION',
       supplyAssumption: 'DEMO 태양광 공급 가정',
       propellantInterpretation: '촬영 활동은 추진제를 쓰지 않음',
       scheduleContextStatus: 'NO_COMMITTED_SCHEDULE_CONFLICT',
-      candidates: [1, 2, 3].map((n) => ({ candidateId: `${owner(m[1])}~cand-${n}`, issues: n === 2 ? ['ILLUMINATION_REJECTED'] : [] })),
+      candidates: candidates(requestFor(owner(m[1]), now).r).map((c) => ({ candidateId: c.id.value, issues: c.feasibility.feasible ? [] : ['ILLUMINATION_REJECTED'] })),
     },
   })],
   ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/camera-work$/, (m) => ({ run_id: m[1], status: 'EVALUATED', camera_model_version: 1, attempts: 1, last_assessment_id: sha(m[1]).slice(0, 24), last_issue: null })],
   ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/illumination-work$/, (m) => ({ run_id: m[1], status: 'EVALUATED', attempts: 1, last_issue: null })],
-  ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/camera\/(\d+)$/, (m) => ({
+  ['planning', 'GET', /^\/api\/planning\/runs\/([^/]+)\/camera\/(\d+)$/, (m, { now }) => ({
     id: m[1],
     body: {
       scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE',
-      candidates: [1, 3].map((n) => ({ candidateId: `${owner(m[1])}~cand-${n}`, cameraResult: { id: `${owner(m[1])}~fp-${n}`, body: { id: `${owner(m[1])}~fp-${n}`, scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } })),
+      // Only sun-feasible propagated passes get a camera (footprint) evaluation.
+      candidates: candidates(requestFor(owner(m[1]), now).r)
+        .filter((c) => c.feasibility.feasible)
+        .map((c) => {
+          const fp = c.id.value.replace('~cand-', '~fp-')
+          return { candidateId: c.id.value, cameraResult: { id: fp, body: { id: fp, scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } }
+        }),
     },
   })],
 

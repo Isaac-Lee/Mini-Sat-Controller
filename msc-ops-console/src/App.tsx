@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, newIdempotencyKey, setDemoBackend } from './api/client'
-import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, TrackedSatelliteRow } from './api/types'
+import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, TimeWindow, TrackedSatelliteRow } from './api/types'
 import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
@@ -15,7 +15,7 @@ import { AuthorityPanel } from './components/AuthorityPanel'
 import { OverviewPanel, type ConsoleTab } from './components/OverviewPanel'
 import { WorkflowPanel } from './components/WorkflowPanel'
 import { ProductPanel } from './components/ProductPanel'
-import { useTaiUtcOffset } from './time'
+import { epochUtcMs, epochValidityMs, useTaiUtcOffset } from './time'
 import './App.css'
 
 const NORAD_ID = 63229
@@ -89,6 +89,7 @@ export default function App() {
   const [predictMessage, setPredictMessage] = useState<string>('')
   const [document_, setDocument_] = useState<EphemerisDocument | null>(null)
   const [anchor, setAnchor] = useState<{ utcIso: string; tai: MissionInstant } | null>(null)
+  const [pass, setPass] = useState<TimeWindow | null>(null)
 
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -179,22 +180,38 @@ export default function App() {
     }
   }
 
-  async function generatePrediction() {
+  // Without a pass: the next 3 hours at 60 s. With a pass (an imaging window from the request
+  // tab): 15 minutes either side of it at 10 s, emphasised on the map and opened at its midpoint.
+  async function generatePrediction(target?: TimeWindow) {
     if (flightOrbit === 'unknown' || flightOrbit === 'missing') return
     setPredictBusy(true)
     setPredictMessage('')
+    if (target) setTab('map')
     try {
-      const nowUtc = new Date().toISOString().replace(/\.\d+Z$/, '')
-      const laterUtc = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, '')
-      const start = await api.utcToTai(nowUtc)
-      const end = await api.utcToTai(laterUtc)
+      const utcNoZ = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, '')
+      const nowMs = Date.now()
+      const nowUtc = utcNoZ(nowMs)
+      // Flight Dynamics only predicts within ±7 days of the GP epoch, so the margin around a late
+      // pass is clipped to that interval.
+      const [validFrom, validTo] = epochValidityMs(epochUtcMs(flightOrbit.elements.epochUtc))
+      const [nowTai, laterTai, epochStartTai, epochEndTai] = (
+        await api.convertUtc([nowUtc, utcNoZ(nowMs + 3 * 60 * 60 * 1000), utcNoZ(validFrom), utcNoZ(validTo)])
+      ).conversions.map((c) => c.tai)
+      const margin = 15 * 60
+      // A clipped bound takes the converted limit whole (nanos included), never limit seconds + pass nanos.
+      const before = target && { ...target.start, seconds: target.start.seconds - margin }
+      const after = target && { ...target.end, seconds: target.end.seconds + margin }
+      const start = before ? (before.seconds < epochStartTai.seconds ? epochStartTai : before) : nowTai
+      const end = after ? (after.seconds >= epochEndTai.seconds ? epochEndTai : after) : laterTai
       const key = newIdempotencyKey()
-      const manifestResult = await api.predict(flightOrbit.id, { start, end }, 60, key)
+      const manifestResult = await api.predict(flightOrbit.id, { start, end }, target ? 10 : 60, key)
       const doc = await api.samples(manifestResult.body.id)
       setDocument_(doc)
-      setAnchor({ utcIso: nowUtc + 'Z', tai: start })
-      setIndex(0)
-      setPredictMessage('예측 생성 완료: ' + doc.groundTrack.length + '개 샘플')
+      setAnchor({ utcIso: nowUtc + 'Z', tai: nowTai })
+      setPass(target ?? null)
+      const mid = target ? (target.start.seconds + target.end.seconds) / 2 : 0
+      setIndex(target ? Math.max(0, doc.groundTrack.findIndex((p) => p.time.seconds >= mid)) : 0)
+      setPredictMessage('예측 생성 완료: ' + doc.groundTrack.length + '개 샘플' + (target ? ' (예상 촬영 구간 ±15분, 10초 간격)' : ''))
     } catch (error) {
       setPredictMessage('예측 생성 실패: ' + errorMessage(error))
     } finally {
@@ -250,7 +267,7 @@ export default function App() {
       {demoMode && (
         <div className="demo-banner">
           데모 모드 — 브라우저 안의 가짜 백엔드가 응답합니다. 실제 서비스·DB에 연결하지 않으며 새로고침하면 처음으로 돌아갑니다.
-          요청을 제출하면 몇 초마다 RECEIVED → ACCEPTED → SCHEDULED → FULFILLED로 진행합니다.
+          요청을 제출하면 몇 초마다 RECEIVED → ACCEPTED → SCHEDULED → FULFILLED로 진행합니다(시간 압축 — 실제로는 촬영 시각이 지나야 완료). 위성 위치와 촬영 가능 시각은 데모 궤도 요소를 SGP4로 실제 전파한 값입니다.
         </div>
       )}
 
@@ -290,7 +307,7 @@ export default function App() {
       {tab === 'map' && (
         <main className="layout" id="panel-map" role="tabpanel" aria-labelledby="tab-map">
           <div className="map-pane">
-            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} footprints={footprints} />
+            <MapView track={track} currentIndex={times.length ? index : null} requestArea={selectedRequest?.body.area ?? null} footprints={footprints} highlight={pass} />
           </div>
 
           <aside className="side-panel">
@@ -360,7 +377,7 @@ export default function App() {
             {flightOrbit !== 'missing' && flightOrbit !== 'unknown' && (
               <section className="panel-block">
                 <h2>지상궤적 예측</h2>
-                <button onClick={generatePrediction} disabled={predictBusy} aria-busy={predictBusy}>
+                <button onClick={() => generatePrediction()} disabled={predictBusy} aria-busy={predictBusy}>
                   예측 생성 (향후 3시간, 60초 간격)
                 </button>
                 {predictMessage && <p className="hint" aria-live="polite">{predictMessage}</p>}
@@ -399,7 +416,16 @@ export default function App() {
 
       {tab === 'request' && (
         <main className="layout single" id="panel-request" role="tabpanel" aria-labelledby="tab-request">
-          <RequestPanel selectedRequest={selectedRequest} onOpenWorkflow={() => setTab('workflow')} offset={taiUtcOffset.offset} onSelectRequest={setSelectedRequest} />
+          <RequestPanel
+            selectedRequest={selectedRequest}
+            onOpenWorkflow={() => setTab('workflow')}
+            offset={taiUtcOffset.offset}
+            onSelectRequest={setSelectedRequest}
+            flightOrbit={flightOrbit}
+            onImportOrbit={importOrbit}
+            importBusy={importBusy}
+            onShowPass={(w) => generatePrediction(w)}
+          />
         </main>
       )}
 

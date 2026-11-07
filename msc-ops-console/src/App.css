@@ -272,6 +272,16 @@ input[type='number'] {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.imaging-opportunities {
+  border: 1px solid #9333ea;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+}
+.imaging-opportunities h4 {
+  margin: 0 0 0.3rem;
+}
+
 .time-value {
   font-size: 0.85rem;
 }

@@ -1,7 +1,7 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef } from 'react'
-import type { Area, GroundPoint } from '../api/types'
+import type { Area, GroundPoint, TimeWindow } from '../api/types'
 import type { FootprintOverlay } from '../api/footprints'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   currentIndex: number | null
   requestArea?: Area | null
   footprints?: FootprintOverlay[]
+  /** Imaging window to emphasise on the track (TAI bounds, compared against sample times). */
+  highlight?: TimeWindow | null
 }
 
 // Splits the polyline wherever the ground track crosses the +/-180 deg antimeridian,
@@ -28,7 +30,7 @@ function splitAtAntimeridian(track: GroundPoint[]): [number, number][][] {
   return segments
 }
 
-export function MapView({ track, currentIndex, requestArea, footprints = [] }: Props) {
+export function MapView({ track, currentIndex, requestArea, footprints = [], highlight }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const trackLayerRef = useRef<L.LayerGroup | null>(null)
@@ -62,7 +64,14 @@ export function MapView({ track, currentIndex, requestArea, footprints = [] }: P
     for (const segment of splitAtAntimeridian(track)) {
       L.polyline(segment, { color: '#2563eb', weight: 2, opacity: 0.8 }).addTo(layer)
     }
-  }, [track])
+    if (!highlight) return
+    const inside = track.filter((p) => p.time.seconds >= highlight.start.seconds && p.time.seconds <= highlight.end.seconds)
+    if (inside.length === 0) return
+    for (const segment of splitAtAntimeridian(inside)) {
+      L.polyline(segment, { color: '#9333ea', weight: 6, opacity: 0.95 }).bindTooltip('예상 촬영 가능 구간').addTo(layer)
+    }
+    map.fitBounds(L.latLngBounds(inside.map((p) => [p.latitudeDegrees, p.longitudeDegrees] as [number, number])).pad(3), { maxZoom: 6 })
+  }, [track, highlight])
 
   useEffect(() => {
     const map = mapRef.current
@@ -126,6 +135,7 @@ export function MapView({ track, currentIndex, requestArea, footprints = [] }: P
       {requestArea && (
         <div className="map-legend">
           요청 영역(초록 사각형) · 출처: {requestArea.sourceReference}
+          {highlight && ' · 보라 굵은 선: 예상 촬영 가능 구간(AOI 중심점 기준)'}
           {polygonCount > 0 ? (
             <>
               {' '}· <strong>SIMULATION · 샘플 footprint, 연속 노출 아님</strong> (주황 점선 {polygonCount}개)

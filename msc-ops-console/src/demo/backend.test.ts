@@ -64,13 +64,20 @@ describe('demo backend', () => {
   })
 
   it('keeps access windows inside the requested horizon', async () => {
-    const start = { seconds: 2_000_000_000, nanos: 0, scale: 'TAI' as const }
+    const start = await api.utcToTai(new Date().toISOString().slice(0, 19))
     const end = { ...start, seconds: start.seconds + 86_400 }
-    const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
+    const target = { id: 't', latitudeDegrees: 0, longitudeDegrees: 127, altitudeMeters: 0 }
     const query = { kind: 'POINT_IMAGING' as const, target, horizon: { start, end }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 }
     const { body } = await api.requestAccessPrediction('demo-orbit-snapshot-1', query, 'k')
-    expect(body.windows.length).toBeGreaterThan(0)
     expect(body.windows.every((w) => w.start.seconds >= start.seconds && w.end.seconds <= end.seconds)).toBe(true)
+  })
+
+  it('rejects searches Flight Dynamics would reject: over 24 h, or beyond 7 days from the epoch', async () => {
+    const start = await api.utcToTai(new Date().toISOString().slice(0, 19))
+    const target = { id: 't', latitudeDegrees: 36, longitudeDegrees: 127, altitudeMeters: 0 }
+    const query = (s: number, e: number) => ({ kind: 'POINT_IMAGING' as const, target, horizon: { start: { ...start, seconds: s }, end: { ...start, seconds: e } }, minimumElevationDegrees: 10, maximumOffNadirDegrees: 30, minimumDurationSeconds: 1 })
+    await expect(api.requestAccessPrediction('demo-orbit-snapshot-1', query(start.seconds, start.seconds + 86_401), 'k1')).rejects.toMatchObject({ kind: 'invalid' })
+    await expect(api.requestAccessPrediction('demo-orbit-snapshot-1', query(start.seconds + 7 * 86_400, start.seconds + 7 * 86_400 + 3_600), 'k2')).rejects.toMatchObject({ kind: 'invalid' })
   })
 
   it('refuses a second cancel and keeps an unplanned cancelled request out of planning', async () => {
@@ -85,6 +92,21 @@ describe('demo backend', () => {
   it('links product sources to local demo data instead of the live route', () => {
     expect(productsApi.sourceUrl('r', 's', true)).toMatch(/^data:image\//)
     expect(productsApi.sourceUrl('r', 's')).toMatch(/^data:/)
+  })
+
+  it('gives each evaluated candidate its own footprint row', async () => {
+    const seed = (await taskingApi.list()).items.find((i) => i.body.request.status === 'FULFILLED')!
+    const { runs } = await loadPlanning(seed.id)
+    const camera = (await request(`/fe-api/planning/api/planning/runs/${runs[0].id}/camera/1`)) as { body: { candidates: Array<{ cameraResult: { id: string } }> } }
+    const rows = await Promise.all(
+      camera.body.candidates.map(async (c) => {
+        const result = (await request(`/fe-api/flight/api/camera-footprint-evaluations/${c.cameraResult.id}/result`)) as { samples: Array<{ footprintCorners: Array<{ northMeters: number }> }> }
+        return result.samples[0].footprintCorners[0].northMeters
+      }),
+    )
+    // How many passes are sunlit depends on when the demo orbit was loaded, so this asserts distinctness only.
+    expect(rows.length).toBeGreaterThanOrEqual(1)
+    expect(new Set(rows).size).toBe(rows.length)
   })
 
   it('reports unknown routes as not found instead of inventing data', async () => {

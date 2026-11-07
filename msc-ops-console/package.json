@@ -14,7 +14,8 @@
   "dependencies": {
     "leaflet": "^1.9.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "satellite.js": "6.0.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

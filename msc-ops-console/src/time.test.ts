@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useTaiUtcOffset } from './time'
+import { useTaiUtcOffset, epochUtcMs, epochValidityMs } from './time'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -47,5 +47,19 @@ describe('exact UTC display helpers', () => {
     await exactUtc(b)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('GP epoch helpers', () => {
+  it('parses an epoch with or without a trailing Z', () => {
+    expect(epochUtcMs('2026-09-11T03:28:43.405248')).toBe(Date.parse('2026-09-11T03:28:43.405Z'))
+    expect(epochUtcMs('2026-09-11T03:28:43.405248Z')).toBe(epochUtcMs('2026-09-11T03:28:43.405248'))
+  })
+
+  it('rounds the ±7 day validity inwards to whole seconds', () => {
+    const epoch = Date.parse('2026-11-07T01:38:07.250Z')
+    const [from, to] = epochValidityMs(epoch)
+    expect(from).toBe(Date.parse('2026-10-31T01:38:08Z'))
+    expect(to).toBe(Date.parse('2026-11-14T01:38:07Z'))
   })
 })
