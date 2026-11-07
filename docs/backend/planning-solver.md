@@ -26,8 +26,12 @@ a proposal, the operator reviews it and calls
 [`simulation-commit`](simulation-schedule-v1.md) on the proposal's `runId` with its
 `candidateId`; that route re-checks resources, conflicts and versions.
 
-Current limits: one request per call (the domain solver accepts many); proposals on
-one spacecraft are not jointly re-forecast; no backtracking or optimality claim.
+Current limits: one request per call (the domain solver accepts many), so through the
+API the cross-request priority order and proposal-vs-proposal conflicts are unused and
+reassignment happens only against committed activities; proposals on one spacecraft
+are not jointly re-forecast; no backtracking or optimality claim. Solve does not check
+camera sample evidence (it depends on the operator-chosen camera model version) or the
+live request state/deadline, so `simulation-commit` can still reject a proposal.
 
 ## Verification
 

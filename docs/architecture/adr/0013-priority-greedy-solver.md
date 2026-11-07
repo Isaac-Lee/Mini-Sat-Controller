@@ -26,6 +26,7 @@ resources, conflicts, request revision and schedule version.
 Known limits: per-option resource forecasts are evaluated against committed context
 only, so two proposals on one spacecraft are not jointly re-forecast; there is no
 backtracking, swap search or objective function. An exact or metaheuristic optimizer
-would need its own ADR and its own scope label.
+would need its own ADR and its own scope label. The first API passes one request per
+call, so cross-request priority ordering is exercised at domain level only.
 
 See [planning solver behavior](../../backend/planning-solver.md).

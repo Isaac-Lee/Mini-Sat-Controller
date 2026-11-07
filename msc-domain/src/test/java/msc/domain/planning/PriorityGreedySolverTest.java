@@ -137,15 +137,20 @@ class PriorityGreedySolverTest {
         new PriorityGreedySolver.Option(
             candidate("e1", "r-e", "sat-1", 10, 20),
             resources(ResourceValidation.Status.REJECTED));
+    var infeasible =
+        new PriorityGreedySolver.Option(
+            candidate("e0", "r-e", "sat-1", 0, 5, FeasibilityEvaluation.Status.INFEASIBLE),
+            VALIDATED);
     var ok = new PriorityGreedySolver.Option(candidate("e2", "r-e", "sat-2", 30, 40), VALIDATED);
     var result =
         PriorityGreedySolver.solve(
-            List.of(new PriorityGreedySolver.Demand(new RequestId("r-e"), 1, List.of(ok, rejected))),
+            List.of(new PriorityGreedySolver.Demand(new RequestId("r-e"), 1, List.of(ok, rejected, infeasible))),
             List.of());
     var proposal = result.proposals().getFirst();
     assertEquals("e2", selected(proposal));
     assertFalse(proposal.reassigned());
-    assertTrue(proposal.decisions().getFirst().rationale().contains("REJECTED"));
+    assertTrue(proposal.decisions().get(0).rationale().contains("infeasible"));
+    assertTrue(proposal.decisions().get(1).rationale().contains("REJECTED"));
     assertThrows(
         IllegalArgumentException.class,
         () ->

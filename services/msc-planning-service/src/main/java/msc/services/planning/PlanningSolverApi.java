@@ -106,7 +106,12 @@ public class PlanningSolverApi {
                 new PlanningResources(json).capture(store, schedules, attempt, asset, sibling, now);
             assessment.scheduleHeads().forEach(h -> heads.put(json.fingerprint(h), h));
             var definition = json.convert(sibling.catalog().value(), CatalogEntry.class).activity();
-            var domainRun = PlanningRun.restore(sibling.run(), (ignored, version) -> definition);
+            PlanningRun domainRun;
+            try {
+              domainRun = PlanningRun.restore(sibling.run(), (ignored, version) -> definition);
+            } catch (IllegalArgumentException invalid) {
+              throw ApiException.invalid("Stored run rejected: " + invalid.getMessage());
+            }
             for (var candidate : domainRun.candidates()) {
               var forecast =
                   assessment.candidates().stream()
@@ -128,13 +133,18 @@ public class PlanningSolverApi {
                                   List.of()))));
             }
           }
-          var committed = heads.values().stream().map(MissionSchedule::restore).toList();
-          var result =
-              PriorityGreedySolver.solve(
-                  List.of(
-                      new PriorityGreedySolver.Demand(
-                          new RequestId(run.requestId()), priority, options)),
-                  committed);
+          PriorityGreedySolver.Result result;
+          try {
+            var committed = heads.values().stream().map(MissionSchedule::restore).toList();
+            result =
+                PriorityGreedySolver.solve(
+                    List.of(
+                        new PriorityGreedySolver.Demand(
+                            new RequestId(run.requestId()), priority, options)),
+                    committed);
+          } catch (IllegalArgumentException invalid) {
+            throw ApiException.invalid("Stored planning data rejected: " + invalid.getMessage());
+          }
           var solved =
               new Solved(
                   "SIMULATION",
