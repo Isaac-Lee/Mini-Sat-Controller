@@ -4,6 +4,7 @@ import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, Tr
 import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
+import { MissionActionsPanel } from './components/MissionActionsPanel'
 import { Timeline } from './components/Timeline'
 import { LiveClock } from './components/LiveClock'
 import { RequestPanel } from './components/RequestPanel'
@@ -33,6 +34,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'monitor', label: '모니터링' },
   { id: 'authority', label: '승인·안전' },
   { id: 'product', label: '제품' },
+  { id: 'actions', label: '임무 조작' },
 ]
 
 function phaseFromError(error: unknown): Phase {
@@ -405,6 +407,12 @@ export default function App() {
       {tab === 'authority' && (
         <main className="layout single" id="panel-authority" role="tabpanel" aria-labelledby="tab-authority">
           <AuthorityPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} offset={taiUtcOffset.offset} />
+        </main>
+      )}
+
+      {tab === 'actions' && (
+        <main className="layout single" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions">
+          <MissionActionsPanel selectedRequest={selectedRequest} />
         </main>
       )}
 
