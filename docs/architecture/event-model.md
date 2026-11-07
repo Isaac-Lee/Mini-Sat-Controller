@@ -15,7 +15,7 @@ facts recorded after a successful transition, not disguised commands such as
 | reference-data | ReferenceSnapshotPublished, ReferenceDataStale |
 | monitoring | SpacecraftModeChanged, SafeModeDetected |
 | anomaly | AnomalyDeclared, PlanningFrozen |
-| product-generation | L0ProductCreated |
+| product-generation | L0ProductCreated (anticipated); emitted today: SimulationSourceProductCreated, SimulationBytePreviewCreated, ProductQualityAssessed (scope INTEGRITY_ONLY_SYNTHETIC, environment SIMULATION) |
 
 These names are an event contract catalog, not claims that v0.1 emits all events.
 The current use case returns immutable artifacts synchronously. Future event

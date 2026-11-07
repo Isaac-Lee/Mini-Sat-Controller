@@ -52,9 +52,10 @@ at `/api/products/simulation-source-packages/{id}/work` and the `/internal` equi
 expired claim, transient retry, owner-hash mismatch and invalid event envelope rollback.
 RabbitMQ live delivery was subsequently verified below.
 
-Next integration: product download, synthetic quicklook and quality
-workflow. Packet-level reconstruction, actual instrument L0 qualification and evidence-based
-request fulfillment remain in the full backend scope.
+Product download/preview is in [simulation-product-content.md](simulation-product-content.md);
+synthetic L0, quicklook, integrity-only assessment and request fulfillment are in
+[simulation-product-l0.md](simulation-product-l0.md). Packet-level reconstruction and actual
+instrument L0 qualification remain in the full backend scope.
 
 
 ## Deployed verification — 2026-09-12
