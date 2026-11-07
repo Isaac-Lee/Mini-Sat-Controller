@@ -25,7 +25,8 @@ and no partially applied production, drain or burn. A successful result is `APPL
 ground-observed command `EXECUTED` assertion. The executor persists the effect
 and command ledger together, with duplicate suppression and ordered completion.
 
-The result retains declared power consumption but does not yet evolve a battery. Battery,
+The result retains declared power consumption but does not evolve a battery; only the
+separate TOY_MODEL projection below integrates battery Wh. Validated battery,
 orbital and attitude evolution remain required follow-up implementation, using explicit
 simulation models rather than inferred SPACEEYE-T1 hardware specifications. A modeled drain
 is neither ground reception evidence nor authorization to delete durable payload content.
@@ -165,3 +166,59 @@ command fixture). It verified disconnected/delayed/lost responses remain UNKNOWN
 returns the pinned modeled observation, repeated reception preserves it, an old attempt's replay
 does not change retrospectively, and reception never reapplies resource effects. Evidence:
 `.local/simulation-reception-verification.json`, log `/private/tmp/msc-reception-live.log`.
+
+## TOY_MODEL resource integration and seeded record/replay
+
+`SimulationToyPhysics` is a pure, deterministic calculator labelled `fidelity: TOY_MODEL` and
+`environment: SIMULATION` on every sample, log and frame provenance. Units are explicit:
+battery watt-hours (Wh), storage megabytes (MB), propellant kilograms (kg), power watts (W);
+ticks are the pinned correlation's onboard ticks and visibility windows are TAI.
+
+Per step (`stepTicks`, last step shortened to land on `toTick`, at most 1000 steps):
+
+1. Battery recharges at the mission's constant `rechargeWatts` for the step duration, capped at
+   `batteryCapacityWh`. There is no eclipse, temperature or degradation model.
+2. Operations completing in the step are applied in completion-tick then command-ID order. The
+   whole operation energy (`powerWatts × durationSeconds / 3600` Wh) is debited at completion,
+   matching the atomic-completion model above. If it would take the battery below
+   `minimumBatteryWh`, the operation is `BATTERY_FLOOR`: no storage, propellant or energy effect,
+   and the step's frame reports `SAFE` mode. Otherwise `SimulatorOperationEffects` decides
+   storage/propellant (`STORAGE_CAPACITY_EXCEEDED`, `INSUFFICIENT_PROPELLANT`, ...) and energy is
+   debited only when `APPLIED`.
+3. `linkAvailable` is true only when the step's TAI instant lies in a supplied half-open
+   visibility window and the seeded event for that step is not a dropout. No dB, SNR or data rate
+   is computed; DOWNLINK drain still uses the published profile rate and is not gated by the flag.
+
+`record(setup, seed)` draws, per step in order, a frame UUID and a dropout decision from
+`new Random(seed)` and stores them with the full setup (mission, correlation, initial state,
+pinned command entries, visibility). `replay(log)` uses no RNG and rejects logs whose events do
+not match the setup's steps or whose labels are not `TOY_MODEL`/`SIMULATION`. Reusing a seed for
+the same spacecraft reproduces the same frame IDs; differing content then conflicts on frame
+identity rather than overwriting telemetry.
+
+ADMIN `POST /api/simulation/scenarios/{id}/toy-runs` (with `Idempotency-Key`) takes `runId`,
+`seed`, `toTick`, `stepTicks`, `initialBatteryWh`, `telemetryBindingVersion`, `visibility` and
+`linkDropoutProbability`. It projects the scenario's `PENDING` command entries from its current
+tick and reservoirs, stores the log as `simulation-toy-run`, and emits each frame through
+`TelemetrySimulationApi` with source `simulator:toy-model:{scenarioId}`, all in one transaction.
+It never advances the scenario clock or changes the command ledger. ADMIN
+`GET /api/simulation/toy-runs/{runId}/replay` recomputes the samples from the stored log only.
+
+Tests: `SimulationToyPhysicsTest` (8 unit tests: same-seed determinism and different-seed
+divergence, JSON-roundtrip replay equality, unit arithmetic, link window/dropout, battery floor,
+recharge cap, full storage, tampered/mislabelled logs) and
+`SimulationScenarioApiIT#toyRunRecordsReplayableTelemetryWithoutChangingScenario` (HTTP,
+PostgreSQL, RabbitMQ: persisted frames equal replay, idempotent retry, run-ID conflict, role
+denial, scenario unchanged). Not established: physical fidelity, deployed K8s behaviour, or
+consumption of the toy telemetry by Monitoring.
+
+### Resource budget
+
+The simulator keeps the `scripts/render-k8s.py` default (requests 250m CPU / 256Mi, limits 2 CPU
+/ 512Mi); no change is proposed. A toy run is bounded by 1000 steps, each O(operations in the
+step) arithmetic plus one telemetry row and outbox event; the 500-command scenario cap bounds
+operations. Estimated worst case per request: well under 1 CPU-second and a few MB of heap for
+the log and up to 1000 frames, dominated by 1000 row inserts in one transaction. Measurement
+plan: in the K8s environment run a 1000-step toy run against a scenario with 500 pending
+commands while sampling `kubectl top pod` for the simulator and recording request latency and
+`jvm_memory_used_bytes`; compare with the estimate before treating the budget as stable.
