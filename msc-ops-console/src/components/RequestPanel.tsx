@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { ApiError, newIdempotencyKey } from '../api/client'
+import { useEffect, useRef, useState } from 'react'
+import { api, ApiError, newIdempotencyKey } from '../api/client'
 import { taskingApi } from '../api/tasking'
-import type { RequestState, Submission } from '../api/types'
+import type { Area, Place, RequestState, Submission } from '../api/types'
 import { TimeValue } from './TimeValue'
 import type { TaiUtcOffset } from '../time'
 import { STATUS_CLASS, STATUS_LABEL } from '../requestStatus'
@@ -19,6 +19,15 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
+const TERMINAL = /^(FULFILLED|REJECTED|EXPIRED|CANCELLED)$/
+
+// Revising emits ObservationRequestInvalidated, so planning drops work already made for it.
+const PLANNED = /^(SCHEDULED|PARTIALLY_FULFILLED)$/
+
+function areaText(area: Area): string {
+  return `W ${area.west}, S ${area.south}, E ${area.east}, N ${area.north}`
+}
+
 export function RequestPanel({ demoMode, offset, onSelectRequest, selectedRequest, onOpenWorkflow }: Props) {
   const [items, setItems] = useState<RequestState[]>([])
   const [listPhase, setListPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -32,6 +41,18 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
   const [selectedId, setSelectedId] = useState<string | null>(selectedRequest?.id ?? null)
   const [submittedFields, setSubmittedFields] = useState<Submission | null>(null)
   const [actionMessage, setActionMessage] = useState('')
+
+  const [placeResult, setPlaceResult] = useState<{ target: string; places: Place[] } | null>(null)
+  const [placeError, setPlaceError] = useState('')
+  const placeQuery = useRef('')
+
+  const [reviseTarget, setReviseTarget] = useState(selectedRequest?.body.target ?? '')
+  const [revisePriority, setRevisePriority] = useState(selectedRequest?.body.request.requestedPriority ?? 50)
+  const [dropScheduleAck, setDropScheduleAck] = useState(false)
+  const [reviseBusy, setReviseBusy] = useState(false)
+  // One key per distinct revision payload, so a retry after a lost response is deduplicated.
+  const reviseKeys = useRef(new Map<string, string>())
+  const reviseInFlight = useRef(false)
 
   async function loadList() {
     if (demoMode) return
@@ -52,6 +73,20 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode])
 
+  async function checkPlace() {
+    const query = target.trim()
+    if (demoMode || !query) return
+    placeQuery.current = query
+    setPlaceResult(null)
+    setPlaceError('')
+    try {
+      const places = await api.places(query)
+      if (placeQuery.current === query) setPlaceResult({ target: query, places })
+    } catch (error) {
+      if (placeQuery.current === query) setPlaceError(errorMessage(error))
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (demoMode) return
@@ -69,6 +104,9 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
       await taskingApi.create(submission, newIdempotencyKey())
       setSubmitMessage('요청 제출됨 — 목표 이름 해석 대기 중일 수 있습니다.')
       setTarget('')
+      placeQuery.current = ''
+      setPlaceResult(null)
+      setPlaceError('')
       await loadList()
     } catch (error) {
       setSubmitMessage('제출 실패: ' + errorMessage(error))
@@ -83,6 +121,51 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
     if (selected) onSelectRequest(selected)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected])
+
+  function selectRow(item: RequestState) {
+    setSelectedId(item.id)
+    setSubmittedFields(null)
+    setActionMessage('')
+    setReviseTarget(item.body.target)
+    setRevisePriority(item.body.request.requestedPriority)
+    setDropScheduleAck(false)
+  }
+
+  // Sends the stored submission of the current revision back unchanged apart from the given
+  // fields; a clarification area must be the server's option object itself (record equality).
+  async function revise(changes: Partial<Pick<Submission, 'target' | 'priority' | 'area'>>) {
+    if (!selected || reviseInFlight.current) return
+    if (PLANNED.test(selected.body.request.status) && !dropScheduleAck) return
+    reviseInFlight.current = true
+    setReviseBusy(true)
+    setActionMessage('')
+    try {
+      const original = await taskingApi.submittedRevision(selected.id, selected.body.request.revision)
+      // A stored area bypasses gazetteer resolution (RequestWorkflow.submit), so keeping it with a
+      // new target would observe the old place under the new name. A new target re-resolves.
+      const targetChanged = changes.target !== undefined && changes.target !== original.target
+      const submission: Submission = { ...original, ...(targetChanged ? { area: null } : {}), ...changes }
+      const payloadKey = JSON.stringify([selected.id, selected.version, submission])
+      const key = reviseKeys.current.get(payloadKey) ?? newIdempotencyKey()
+      reviseKeys.current.set(payloadKey, key)
+      await taskingApi.revise(selected.id, selected.version, submission, key)
+      setActionMessage('수정본 제출됨 — 새 revision으로 처음(RECEIVED)부터 다시 처리됩니다.')
+      setDropScheduleAck(false)
+      await loadList()
+    } catch (error) {
+      if (error instanceof ApiError && error.kind === 'conflict') {
+        setActionMessage('수정 실패: 요청이 이미 변경되었거나 종료됨(충돌) — 목록을 새로 불러왔습니다. 입력은 유지됩니다.')
+        await loadList()
+      } else if (error instanceof ApiError && error.kind === 'invalid' && /deadline/i.test(error.message)) {
+        setActionMessage('수정 실패: 원 제출의 마감시각이 이미 지났습니다. 마감시각은 임의로 지우지 않습니다.')
+      } else {
+        setActionMessage('수정 실패: ' + errorMessage(error))
+      }
+    } finally {
+      reviseInFlight.current = false
+      setReviseBusy(false)
+    }
+  }
 
   async function loadSubmission(revision: number) {
     if (!selected) return
@@ -129,10 +212,54 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
         <input
           id="req-target"
           value={target}
-          onChange={(e) => setTarget(e.target.value)}
+          onChange={(e) => {
+            setTarget(e.target.value)
+            placeQuery.current = ''
+            setPlaceResult(null)
+            setPlaceError('')
+          }}
           required
           maxLength={500}
         />
+        <button type="button" onClick={checkPlace} disabled={!target.trim()}>
+          승인 지명 확인
+        </button>
+        <div className="hint">
+          자동완성이 아닙니다 — 승인된 지명 별칭과 정확히 일치(공백·대소문자 정규화)하는지만 확인합니다.
+        </div>
+        {placeError && (
+          <div className="status-error" role="alert">
+            지명 확인 실패: {placeError}
+          </div>
+        )}
+        {placeResult && (
+          <div aria-live="polite">
+            {placeResult.places.length === 0 && (
+              <div className="status-warn">
+                승인 지명 없음 — 이대로 제출하면 영역을 확정할 수 없어 확인 요청(CLARIFICATION) 상태가 됩니다.
+              </div>
+            )}
+            {placeResult.places.length === 1 && (
+              <div className="status-ok">
+                하나로 확정 가능: <span className="mono">{placeResult.places[0].id}:{placeResult.places[0].version}</span>{' '}
+                ({areaText(placeResult.places[0].area)}, 승인 근거 {placeResult.places[0].approvalReference})
+              </div>
+            )}
+            {placeResult.places.length > 1 && (
+              <div className="status-warn">
+                {placeResult.places.length > 100 ? '100곳 초과' : `${placeResult.places.length}곳`} 일치 — 제출 후
+                서버가 제시하는 영역 중 하나를 골라야 합니다.
+                <ul>
+                  {placeResult.places.slice(0, 100).map((place) => (
+                    <li key={`${place.id}:${place.version}`}>
+                      <span className="mono">{place.id}:{place.version}</span> — {areaText(place.area)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <label htmlFor="req-priority">우선순위 (0-100)</label>
         <input
           id="req-priority"
@@ -173,11 +300,7 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
             <li key={item.id}>
               <button
                 className={`request-row ${item.id === selectedId ? 'selected' : ''}`}
-                onClick={() => {
-                  setSelectedId(item.id)
-                  setSubmittedFields(null)
-                  setActionMessage('')
-                }}
+                onClick={() => selectRow(item)}
               >
                 <span>{item.body.target}</span>
                 <span className={STATUS_CLASS[item.body.request.status]}>
@@ -236,7 +359,72 @@ export function RequestPanel({ demoMode, offset, onSelectRequest, selectedReques
               <dd>{submittedFields.priority}</dd>
             </dl>
           )}
-          {!selected.body.request.status.match(/^(FULFILLED|REJECTED|EXPIRED|CANCELLED)$/) && (
+          {selected.body.request.status === 'CLARIFICATION_NEEDED' && selected.body.clarificationOptions.length > 0 && (
+            <>
+              <h4>영역 확인 필요 — 서버가 제시한 승인 영역</h4>
+              <ul className="request-list">
+                {selected.body.clarificationOptions.map((option) => (
+                  <li key={option.id}>
+                    <span className="mono">{option.id}</span> — {areaText(option)}{' '}
+                    <button onClick={() => revise({ area: option })} disabled={reviseBusy}>
+                      이 영역으로 확정
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!TERMINAL.test(selected.body.request.status) && (
+            <form
+              className="request-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                revise({ target: reviseTarget, priority: revisePriority })
+              }}
+            >
+              <h4>요청 수정 (revision {selected.body.request.revision} → {selected.body.request.revision + 1})</h4>
+              <label htmlFor="rev-target">목표</label>
+              <input
+                id="rev-target"
+                value={reviseTarget}
+                onChange={(e) => setReviseTarget(e.target.value)}
+                required
+                maxLength={500}
+              />
+              <label htmlFor="rev-priority">우선순위 (0-100)</label>
+              <input
+                id="rev-priority"
+                type="number"
+                min={0}
+                max={100}
+                value={revisePriority}
+                onChange={(e) => setRevisePriority(Number(e.target.value))}
+              />
+              <div className="hint">
+                기준·마감시각은 현재 제출 원본을 그대로 유지합니다. 목표를 바꾸면 기존 영역은 버리고 새 목표로 다시
+                해석하며, 목표를 그대로 두면 영역을 유지하되 서버가 이를 요청 입력 영역으로 다시 표시하므로 승인 지명
+                출처(id:version)는 남지 않습니다. 수정본은 처음(RECEIVED)부터 다시 처리됩니다.
+              </div>
+              {PLANNED.test(selected.body.request.status) && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={dropScheduleAck}
+                    onChange={(e) => setDropScheduleAck(e.target.checked)}
+                  />{' '}
+                  이미 만들어진 계획·일정이 무효화됨을 이해했습니다
+                </label>
+              )}
+              <button
+                type="submit"
+                disabled={reviseBusy || !reviseTarget.trim() || (PLANNED.test(selected.body.request.status) && !dropScheduleAck)}
+                aria-busy={reviseBusy}
+              >
+                수정본 제출 (expectedVersion={selected.version})
+              </button>
+            </form>
+          )}
+          {!TERMINAL.test(selected.body.request.status) && (
             <button onClick={cancelSelected}>요청 취소</button>
           )}
           {actionMessage && (

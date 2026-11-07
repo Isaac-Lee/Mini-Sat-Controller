@@ -32,6 +32,8 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
   const [recoveryMessage, setRecoveryMessage] = useState('')
 
   const [incidents, setIncidents] = useState<AnomalyState[]>([])
+  const [history, setHistory] = useState<SafetyLatchState[] | null>(null)
+  const [historyError, setHistoryError] = useState('')
   const selectionEpoch = useRef(0)
 
   function selectSpacecraft(value: string) {
@@ -46,6 +48,8 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
     setRecoveryBusy(false)
     setRecoveryMessage('')
     setDecisionReference('')
+    setHistory(null)
+    setHistoryError('')
   }
 
   async function loadLatch() {
@@ -55,12 +59,15 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
     setPhase('loading')
     setErrorText('')
     setCheckResult(null)
+    setHistory(null)
+    setHistoryError('')
     try {
       const result = await anomalyApi.latch(spacecraftId)
       if (epoch !== selectionEpoch.current) return
       if (result.id !== spacecraftId) throw new Error('Safety response spacecraft mismatch')
       setLatch(result)
       setPhase('ready')
+      await loadHistory(epoch)
     } catch (error) {
       if (epoch !== selectionEpoch.current) return
       if (error instanceof ApiError && error.kind === 'not_found') setPhase('not_found')
@@ -69,6 +76,19 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
         setErrorText(errorMessage(error))
       }
       setLatch(null)
+    }
+  }
+
+  async function loadHistory(epoch: number) {
+    try {
+      const rows = await anomalyApi.history(spacecraftId)
+      if (epoch !== selectionEpoch.current) return
+      if (rows.some((row) => row.id !== spacecraftId)) throw new Error('Safety history spacecraft mismatch')
+      // ponytail: newest 20 only; the endpoint has no paging, add it when latches grow long histories.
+      setHistory([...rows].sort((a, b) => b.version - a.version).slice(0, 20))
+      setHistoryError('')
+    } catch (error) {
+      if (epoch === selectionEpoch.current) setHistoryError(errorMessage(error))
     }
   }
 
@@ -103,6 +123,7 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
       if (epoch !== selectionEpoch.current) return
       setCheckResult(result)
       setLatch({ id: spacecraftId, version: result.safetyVersion, body: result.latch })
+      await loadHistory(epoch)
     } catch (error) {
       if (epoch === selectionEpoch.current) setCheckError(errorMessage(error))
     } finally {
@@ -147,6 +168,7 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
       }
       if (result.state) setLatch(result.state)
       await loadIncidents()
+      await loadHistory(epoch)
     } catch (error) {
       if (epoch !== selectionEpoch.current) return
       if (error instanceof ApiError && error.kind === 'conflict') {
@@ -264,6 +286,36 @@ export function AuthorityPanel({ demoMode, offset, initialSpacecraftId = 'sim-sp
               {recoveryMessage}
             </p>
           )}
+        </>
+      )}
+
+      {phase === 'ready' && (
+        <>
+          <h3>안전 상태 이력 (저장된 latch 버전, 최신 20건)</h3>
+          {historyError && (
+            <div className="status-error" role="alert">
+              이력 조회 실패: {historyError}
+            </div>
+          )}
+          {history && history.length === 0 && <div className="hint">이력 없음</div>}
+          {history && history.length > 0 && (
+            <ol className="incident-list" aria-label="안전 상태 이력">
+              {history.map((row) => (
+                <li key={row.version}>
+                  <span className="mono">v{row.version}</span> —{' '}
+                  <span className={row.body.frozen ? 'status-error' : 'status-ok'}>
+                    {row.body.frozen ? '동결' : '동결 없음'}
+                  </span>{' '}
+                  — 사유 {row.body.reasons?.length ? row.body.reasons.join(', ') : '없음'} — generation{' '}
+                  {row.body.generation} / policy {row.body.policyVersion} — 승인{' '}
+                  {row.body.approvals?.length
+                    ? row.body.approvals.map((a) => a.actor).join(', ')
+                    : '없음'}
+                </li>
+              ))}
+            </ol>
+          )}
+          <div className="hint">이력은 기록 시각을 노출하지 않으므로 버전 순서만 의미가 있습니다.</div>
         </>
       )}
 

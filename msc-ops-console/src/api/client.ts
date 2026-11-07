@@ -48,6 +48,9 @@ const REF = '/fe-api/reference'
 const FLIGHT = '/fe-api/flight'
 
 export const api = {
+  places: (target: string) =>
+    request<import('./types').Place[]>(`${REF}/api/places?target=${encodeURIComponent(target)}`),
+
   trackedSatellites: () => request<import('./types').TrackedSatelliteRow[]>(`${REF}/api/tracked-satellites`),
 
   latestOrbit: (noradId: number) =>

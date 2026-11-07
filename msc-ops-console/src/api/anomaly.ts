@@ -15,10 +15,9 @@ function actorHeaders(actor: OperatorActor): HeadersInit {
 export const anomalyApi = {
   latch: (craft: string) => request<SafetyLatchState>(`${ANOMALY}/api/safety/${encodeURIComponent(craft)}`),
 
+  // Every stored latch version, oldest first (StateStore.history ORDER BY version).
   history: (craft: string) =>
-    request<Array<{ id: string; version: number; body: unknown }>>(
-      `${ANOMALY}/api/safety/${encodeURIComponent(craft)}/history`,
-    ),
+    request<SafetyLatchState[]>(`${ANOMALY}/api/safety/${encodeURIComponent(craft)}/history`),
 
   check: (craft: string, actor: OperatorActor) =>
     request<SafetyCheck>(`${ANOMALY}/api/safety/${encodeURIComponent(craft)}/check`, {

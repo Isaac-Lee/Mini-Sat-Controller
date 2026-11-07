@@ -128,3 +128,36 @@ describe('AuthorityPanel spacecraft binding', () => {
     expect(screen.getByText(/expectedSafetyVersion=9/)).toBeInTheDocument()
   })
 })
+
+describe('AuthorityPanel safety history', () => {
+  it('lists stored latch versions newest first and ignores history of a different spacecraft', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/anomalies')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/history')) return Promise.resolve(jsonResponse([
+        { id: 'sim-spaceeye-t1', version: 1, body: { ...latchBody, frozen: false, reasons: [] } },
+        { id: 'sim-spaceeye-t1', version: 2, body: { ...latchBody, reasons: ['STALE_STATE'], approvals: [{ actor: 'operator1' }] } },
+      ]))
+      return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 2, body: latchBody }))
+    }))
+    render(<AuthorityPanel demoMode={false} offset={null} />)
+    const list = await screen.findByRole('list', { name: '안전 상태 이력' })
+    const rows = list.querySelectorAll('li')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].textContent).toMatch(/v2.*STALE_STATE.*operator1/)
+    expect(rows[1].textContent).toMatch(/v1.*동결 없음/)
+  })
+
+  it('shows a history failure without hiding the stored latch', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/anomalies')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/history')) return Promise.resolve(jsonResponse([
+        { id: 'other-craft', version: 1, body: latchBody },
+      ]))
+      return Promise.resolve(jsonResponse({ id: 'sim-spaceeye-t1', version: 1, body: latchBody }))
+    }))
+    render(<AuthorityPanel demoMode={false} offset={null} />)
+    await screen.findByText(/이력 조회 실패/)
+    expect(screen.getByText(/동결됨/)).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '안전 상태 이력' })).not.toBeInTheDocument()
+  })
+})
