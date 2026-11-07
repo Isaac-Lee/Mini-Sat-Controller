@@ -32,6 +32,7 @@ class SimulationScheduleApiTest {
   StateStore store;
   JdbcTemplate db;
   SimulationScheduleApi api;
+  PlanningSolverApi solver;
   ServiceHttp http;
   PlanningRuns.Published run;
   MissionInstant now;
@@ -50,6 +51,7 @@ class SimulationScheduleApiTest {
             db, new TransactionTemplate(new DataSourceTransactionManager(ds)), json, () -> now);
     http = mock(ServiceHttp.class);
     api = new SimulationScheduleApi(store, json, http, () -> now, db);
+    solver = new PlanningSolverApi(store, json, () -> now, db);
     var source = fixture.asset(80, 0);
     var inputs =
         new java.util.EnumMap<
@@ -79,12 +81,28 @@ class SimulationScheduleApiTest {
             source.simulationModel().map(this::wireEvidence),
             source.activityOptions(),
             Optional.of(operations));
-    var attempt = fixture.runs.attempt(UUID.randomUUID().toString(), 1, asset);
+    var base = fixture.runs.attempt(UUID.randomUUID().toString(), 1, asset);
+    var attempt =
+        new PlanningInputs.Attempt(
+            base.id(),
+            base.requestId(),
+            base.revision(),
+            base.capturedAt(),
+            base.status(),
+            Optional.of(
+                wireEvidence(
+                    fixture.f.evidence(Map.of("request", Map.of("requestedPriority", 40))))),
+            base.assets(),
+            base.issues());
     run = new PlanningRuns(store, json).derive(attempt, asset);
     store.transaction(
         () -> {
           store.create("planning-input-attempt", attempt.id(), attempt);
           store.create("planning-run", run.id(), run);
+          store.create(
+              "planning-run-index",
+              attempt.id(),
+              new PlanningRuns.Index(attempt.id(), List.of(run.id())));
           db.update(
               "INSERT INTO planning_work(request_id,revision,last_attempt_id,status)"
                   + " VALUES(?,1,?,'WAITING_INPUTS')",
@@ -325,5 +343,70 @@ class SimulationScheduleApiTest {
         db.queryForObject(
             "SELECT count(*) FROM state_head WHERE kind='simulation-v1-operation'", Integer.class));
     assertNotNull(downlink.commit(run.id(), downlinkCommand(), "downlink", actor).path("body"));
+  }
+
+  @Test
+  void solveProposesOnlyThenOperatorCommitsAndReplayIsStable() {
+    var result = solver.solve(run.id(), "solve", actor);
+    var solved = json.convert(result.path("body"), PlanningSolverApi.Solved.class);
+    assertEquals("GREEDY_HEURISTIC_NOT_OPTIMAL", solved.scope());
+    assertEquals("SIMULATION", solved.environment());
+    assertEquals(List.of(run.id()), solved.consideredRunIds());
+    var proposal = solved.result().proposals().getFirst();
+    assertEquals(40, proposal.priority());
+    assertEquals(run.run().candidates().getFirst().id(), proposal.candidateId().orElseThrow());
+    assertFalse(proposal.reassigned());
+    // Proposal only: no schedule, outbox event or request state change.
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM state_head WHERE kind='mission-schedule'", Integer.class));
+    assertEquals(0, db.queryForObject("SELECT count(*) FROM outbox", Integer.class));
+    assertEquals(
+        "WAITING_INPUTS", db.queryForObject("SELECT status FROM planning_work", String.class));
+    commit("commit-proposal");
+    // Same key replays the stored proposal even though the schedule has since changed.
+    assertEquals(
+        json.fingerprint(result), json.fingerprint(solver.solve(run.id(), "solve", actor)));
+    assertThrows(ApiException.class, () -> solver.solve(run.id(), "after-commit", actor));
+  }
+
+  @Test
+  void solveRejectsSupersededAttemptWithoutStoringAProposal() {
+    db.update("UPDATE planning_work SET last_attempt_id='newer-attempt'");
+    assertThrows(ApiException.class, () -> solver.solve(run.id(), "superseded", actor));
+    assertEquals(
+        0,
+        db.queryForObject(
+            "SELECT count(*) FROM state_head WHERE kind='planning-solve'", Integer.class));
+    assertEquals(0, db.queryForObject("SELECT count(*) FROM idempotency", Integer.class));
+  }
+
+  @Test
+  void solveRequiresTheSameOperatorRolesAsCommit() throws Exception {
+    var role = org.springframework.security.access.prepost.PreAuthorize.class;
+    var commitRoles =
+        SimulationScheduleApi.class
+            .getMethod(
+                "commit",
+                String.class,
+                SimulationScheduleApi.Commit.class,
+                String.class,
+                org.springframework.security.core.Authentication.class)
+            .getAnnotation(role)
+            .value();
+    var solve =
+        PlanningSolverApi.class.getMethod(
+            "solve",
+            String.class,
+            String.class,
+            org.springframework.security.core.Authentication.class);
+    assertEquals("hasAnyRole('ADMIN','OPERATOR')", commitRoles);
+    assertEquals(commitRoles, solve.getAnnotation(role).value());
+    assertEquals(
+        "/api/planning/runs/{id}/solve",
+        solve
+            .getAnnotation(org.springframework.web.bind.annotation.PostMapping.class)
+            .value()[0]);
   }
 }
