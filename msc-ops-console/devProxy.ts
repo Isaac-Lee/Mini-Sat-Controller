@@ -69,6 +69,8 @@ const groundRules: RoleRule[] = [[/^\/api\/stations$/, 'POST', 'admin']]
 
 const simulatorRules: RoleRule[] = [
   [/^\/api\/simulation\/scenarios$/, 'POST', 'admin'],
+  // Scenario reads are ADMIN/SERVICE in SimulationScenarioApi, not OPERATOR.
+  [/^\/api\/simulation\/scenarios\/[^/]+$/, 'GET', 'admin'],
   [/^\/api\/simulation\/scenarios\/[^/]+\/advance$/, 'POST', 'admin'],
   [/^\/api\/simulation\/scenarios\/[^/]+\/loads\/[^/]+\/link$/, 'POST', 'admin'],
   [/^\/api\/simulation\/stations$/, 'POST', 'admin'],
@@ -108,7 +110,8 @@ const prefixConfig: Record<string, { rules: RoleRule[]; defaultRole: Role }> = {
   '/fe-api/planning': { rules: planningRules, defaultRole: 'requester' },
   '/fe-api/monitoring': { rules: monitoringRules, defaultRole: 'requester' },
   '/fe-api/anomaly': { rules: anomalyRules, defaultRole: 'operator1' },
-  // These services have no requester-facing paths (class-level OPERATOR/ADMIN/SERVICE).
+  // These services have no requester-facing paths (class-level OPERATOR/ADMIN/SERVICE). The
+  // simulator has no OPERATOR /api path at all, so its operator1 default only ever fails closed.
   '/fe-api/mission': { rules: missionRules, defaultRole: 'operator1' },
   '/fe-api/ground': { rules: groundRules, defaultRole: 'operator1' },
   '/fe-api/acquisition': { rules: [], defaultRole: 'operator1' },

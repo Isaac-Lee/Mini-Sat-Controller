@@ -70,7 +70,7 @@ describe('resolveRole', () => {
     expect(resolveRole('/fe-api/simulator', 'POST', '/api/simulation/scenarios')).toBe('admin')
     expect(resolveRole('/fe-api/simulator', 'POST', '/api/simulation/scenarios/s/advance')).toBe('admin')
     expect(resolveRole('/fe-api/simulator', 'POST', '/api/simulation/scenarios/s/loads/l/link')).toBe('admin')
-    expect(resolveRole('/fe-api/simulator', 'GET', '/api/simulation/scenarios/s')).toBe('operator1')
+    expect(resolveRole('/fe-api/simulator', 'GET', '/api/simulation/scenarios/s')).toBe('admin')
     expect(resolveRole('/fe-api/mission', 'POST', '/api/simulation-time-correlations')).toBe('admin')
     expect(resolveRole('/fe-api/mission', 'POST', '/api/authority-policies')).toBe('admin')
     expect(resolveRole('/fe-api/ground', 'POST', '/api/bookings')).toBe('operator1')
