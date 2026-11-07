@@ -77,6 +77,7 @@ to operational incident/approval records is provided.
 | --- | --- | --- |
 | POST | `/api/safety-policies` | ADMIN, Idempotency-Key; sequential policy version and frozen initial latch |
 | GET | `/api/safety/{spacecraftId}` | Persisted latch; does not itself assess current freshness |
+| GET | `/api/safety-policies/{spacecraftId}` | OPERATOR/ADMIN/SERVICE; active policy state (incl. `recoveryApprovals`), 404 when unconfigured |
 | GET | `/api/safety/{spacecraftId}/history` | Immutable latch versions and scoped operator approvals |
 | POST | `/internal/safety/{spacecraftId}/check` | Fresh synchronous assessment with current reasons, policy/estimate/latch versions and evaluation time |
 | POST | `/api/safety/{spacecraftId}/check` | OPERATOR/ADMIN equivalent |

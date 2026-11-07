@@ -6,6 +6,7 @@ import java.util.*;
 import msc.contracts.MissionCatalogBindingContracts.CatalogReference;
 import msc.contracts.TaskingContracts.RequestDetails;
 import msc.domain.spacecraftcontrol.CommandLoad;
+import msc.domain.spacecraftcontrol.CommandReleasePolicy;
 import msc.domain.time.MissionInstant;
 import msc.platform.*;
 import msc.ports.Clock;
@@ -16,7 +17,10 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriUtils;
 
-/** Reviewed V1 simulation release and delivery. No RF or physical spacecraft adapter is used. */
+/**
+ * Reviewed V1 simulation release and delivery. Delivery goes through {@link CommandReleaseGate} to
+ * the SIMULATION link adapter over JSON HTTP, not CCSDS. No RF or physical spacecraft adapter.
+ */
 @RestController
 @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
 public class SimulationDispatchApi {
@@ -55,6 +59,7 @@ public class SimulationDispatchApi {
   private final Clock clock;
   private final CommandScheduleCheckApi schedule;
   private final CommandAuthorityCheckApi authority;
+  private final CommandReleaseGate gate = new CommandReleaseGate();
 
   public SimulationDispatchApi(
       StateStore store,
@@ -73,10 +78,6 @@ public class SimulationDispatchApi {
 
   private static String segment(String value) {
     return UriUtils.encodePathSegment(value, StandardCharsets.UTF_8);
-  }
-
-  private String path(Release release) {
-    return "/internal/simulation/scenarios/" + release.scenarioId() + "/loads";
   }
 
   Checks check(String id, CommandCompiler.Prepared prepared) {
@@ -236,15 +237,18 @@ public class SimulationDispatchApi {
         });
   }
 
-  private void validateLedger(Release release, JsonNode ledger) {
-    String id = release.prepared().load().id().value();
-    if (!id.equals(ledger.path("id").asText())
-        || ledger.path("version").asLong() < 1
-        || !json.fingerprint(ledger.path("body").path("load"))
-            .equals(json.fingerprint(release.submission().path("load")))
-        || !json.fingerprint(release.submission())
-            .equals(ledger.path("body").path("submissionSha256").asText()))
-      throw ApiException.invalid("Simulator ledger does not match the released submission");
+  /** Owner checks as a release-policy decision; {@link #check} has already rejected failures. */
+  private static CommandReleasePolicy.Decision decision(String id, Checks checks) {
+    var reasons = EnumSet.noneOf(CommandReleasePolicy.Reason.class);
+    reasons.addAll(checks.authority().reasons());
+    for (var reason : checks.schedule().reasons())
+      reasons.add(
+          reason == CommandScheduleCheckApi.Reason.DEADLINE_PASSED
+              ? CommandReleasePolicy.Reason.DEADLINE_PASSED
+              : CommandReleasePolicy.Reason.STALE_SCHEDULE);
+    if (!checks.authority().binding().equals(checks.schedule().binding()))
+      reasons.add(CommandReleasePolicy.Reason.CONTEXT_MISMATCH);
+    return new CommandReleasePolicy.Decision(reasons, "simulation-dispatch-checks:" + id);
   }
 
   private StateStore.State<Delivery> save(String id, Delivery result) {
@@ -273,41 +277,51 @@ public class SimulationDispatchApi {
     var release = store.require(RELEASE, id, Release.class).body();
     var old = store.find(DELIVERY, id, Delivery.class);
     if (old.isPresent() && "ACCEPTED".equals(old.get().body().status())) return old.get();
+    var link =
+        new SimulationSpacecraftLink(
+            http, json, clock, id, release.scenarioId(), release.submission());
     // Observe before retrying: a prior timeout or local rollback may hide a successful delivery.
     try {
-      var ledger = http.get("simulator", path(release) + "/" + segment(id), JsonNode.class);
-      validateLedger(release, ledger);
+      var ledger = link.observe();
       return save(id, new Delivery("ACCEPTED", "RECONCILED", clock.now(), ledger));
     } catch (HttpClientErrorException.NotFound absent) {
       // Only an authoritative absence permits a fresh delivery attempt.
     } catch (RestClientException unavailable) {
       return save(id, new Delivery("UNKNOWN", "SIMULATOR_UNAVAILABLE", clock.now(), null));
     }
-    check(id, release.prepared());
+    var checked = check(id, release.prepared());
+    var load = json.convert(release.submission().path("load"), CommandLoad.class);
     // Durable intent precedes outbound I/O; retries use this immutable submission and stable key.
-    store.transaction(
-        () ->
-            store.create(
-                "simulation-dispatch-attempt",
-                UUID.randomUUID().toString(),
-                Map.of(
-                    "loadId",
-                    id,
-                    "scenarioId",
-                    release.scenarioId(),
-                    "submissionSha256",
-                    json.fingerprint(release.submission()),
-                    "at",
-                    clock.now())));
-    try {
-      var ledger =
-          http.post(
-              "simulator", path(release), release.submission(), "control-v1:" + id, JsonNode.class);
-      validateLedger(release, ledger);
-      return save(id, new Delivery("ACCEPTED", "DELIVERED", clock.now(), ledger));
-    } catch (RestClientException unavailable) {
-      return save(id, new Delivery("UNKNOWN", "DELIVERY_NOT_CONFIRMED", clock.now(), null));
-    }
+    var outcome =
+        gate.release(
+            load,
+            checked.schedule().binding(),
+            decision(id, checked),
+            () ->
+                store.transaction(
+                    () ->
+                        store.create(
+                            "simulation-dispatch-attempt",
+                            UUID.randomUUID().toString(),
+                            Map.of(
+                                "loadId",
+                                id,
+                                "scenarioId",
+                                release.scenarioId(),
+                                "submissionSha256",
+                                json.fingerprint(release.submission()),
+                                "at",
+                                clock.now()))),
+            link);
+    return switch (outcome) {
+      case CommandReleaseGate.Refused refused ->
+          throw ApiException.conflict(
+              "Release gate refused simulation delivery: " + refused.decision().reasons());
+      case CommandReleaseGate.Transmitted transmitted ->
+          save(id, new Delivery("ACCEPTED", "DELIVERED", clock.now(), link.receipt()));
+      case CommandReleaseGate.Unconfirmed unconfirmed ->
+          save(id, new Delivery("UNKNOWN", unconfirmed.detail(), clock.now(), null));
+    };
   }
 
   @GetMapping({

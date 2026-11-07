@@ -113,6 +113,7 @@ Flight Dynamics endpoints:
 | GET | `/internal/orbit-designations/{spacecraftId}` | Versioned operational selection pointer |
 | POST | `/api/orbit-designations/{spacecraftId}` | ADMIN selection with expected version, decision reference and idempotency |
 | POST | `/internal/time/utc-to-tai` | UTC history conversion, including leap seconds |
+| POST | `/api/time/utc-to-tai`, `/api/time/tai-to-utc` | Authenticated batch conversion (1..500) through the pinned archive; returns `{conversions:[{tai,utc}], referenceArchiveSha256}`. UTC is zone-less `YYYY-MM-DDThh:mm:ss[.f]`, leap second as `:60`, always the canonical rendering; a non-leap `:60`, zone suffixes and instants before 1972-01-01 are rejected (400). Instants after the archive's last leap-second entry use its last offset (extrapolation, not a guarantee) |
 
 Equivalent authenticated `/api/orbits` and `/api/predictions` endpoints exist
 for operator use, with ADMIN required to register orbit solutions. Orbit designation requires an explicit ADMIN decision; it changes the selection

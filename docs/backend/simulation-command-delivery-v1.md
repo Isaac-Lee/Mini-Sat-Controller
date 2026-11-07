@@ -17,6 +17,14 @@ scenario; it does not use an RF or physical spacecraft adapter.
    The request has no body. Repeated calls reconcile or replay the same delivery.
 5. Advance the Simulator virtual clock. Configure its link and request ACK/reconciliation
    reception. Lost ACK remains UNKNOWN until evidence is actually received.
+   Operators request each reception attempt with
+   `POST /api/command-loads/{loadId}/simulation-reception` (`Idempotency-Key`,
+   `{ "channel": "ACKNOWLEDGMENT" | "RECONCILIATION" }`). Control relays that single attempt to
+   the Simulator's SERVICE-only receive step and returns its belief unchanged (`UNKNOWN` with a
+   reason such as `DELAYED`/`DISCONNECTED`, or `OBSERVED`). Use a new key per attempt; reusing a
+   key replays that attempt (keys are scoped per operator). Before the Simulator holds the
+   delivered ledger the attempt returns 404 `SIMULATOR_REJECTED`. SIMULATION releases only — this
+   is not RF (ADR-0014).
 6. After Control receives the execution event,
    `POST /api/command-loads/{loadId}/simulation-execution/reconcile` with `Idempotency-Key`
    binds it to the exact released load and Simulator ledger. Read the saved result from
@@ -31,6 +39,12 @@ Release verifies the scenario's mission/clock, current schedule, command authori
 safety latch, and each assignment's current request revision and V1 decision. Fresh delivery
 repeats those checks and verifies the deadline after the owner reads. This is the V1 functional
 simulation workflow, not a distributed production authorization fence or precision FD clearance.
+
+Delivery goes through `CommandReleaseGate`, the only caller of `SpacecraftLinkPort`. The gate
+refuses a non-allowed release decision (built from the live schedule and authority checks) or a
+load other than the checked binding, records the attempt, then calls the SIMULATION link adapter
+`SimulationSpacecraftLink`. Transport is the Simulator's JSON HTTP API, **not CCSDS**: no frames,
+APIDs or RF are modelled ([ADR-0004](../architecture/adr/0004-space-link.md)).
 
 A durable attempt precedes outbound I/O. A stable Simulator idempotency key and immutable
 submission prevent duplicate loads when an HTTP acknowledgment or a local result write fails.

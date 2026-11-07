@@ -29,6 +29,24 @@ records the original imaging decision, confirmed booking and resource result. Co
 that operation from Planning and rechecks the booking before a new delivery attempt. A cancelled
 booking prevents delivery. Delivery/ACK uncertainty follows the existing reconciliation flow.
 
+### Operator-initiated simulated downlink steps (SIMULATION only, ADR-0014)
+
+Once the DOWNLINK load is delivered, and before its DOWNLINK command starts (the Simulator
+rejects allocation for a started command), Ground Operations relays the simulated
+ground-segment steps that previously required SERVICE credentials (ADMIN/OPERATOR,
+`Idempotency-Key`, keys scoped per operator):
+
+- `POST /api/bookings/{bookingId}/simulation-downlink-plan`
+  `{ "scenarioId", "loadId", "commandId", "imagingCommandId" }` allocates the synthetic onboard
+  payload of the imaging command to this booking. The payload ID is derived server-side
+  (`fingerprint([scenarioId, imagingCommandId])`), never taken from the client; the Simulator
+  validates SIMULATION scope, CONFIRMED booking, timing and capacity.
+- `POST /api/simulation-downlinks/{planId}/receive` `{ "channel": "RECONCILIATION" }` requests one
+  simulated reception attempt and returns the Simulator belief unchanged (`UNKNOWN` + reason or
+  `OBSERVED` with the receipt). Use a new key per attempt.
+
+These are simulation controls over synthetic bytes, not RF or a real ground station.
+
 ## Guided review
 
 ```sh

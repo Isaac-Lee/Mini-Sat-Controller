@@ -33,3 +33,11 @@ GP JSON is used instead of a five-column NORAD field to permit multi-satellite
 expansion and nine-digit catalog IDs. This is an additional infrastructure adapter,
 not replacement of the explicit two-body simulator model. Public orbit snapshots
 and operational designations remain separate. See [behavior and evidence](../../backend/public-orbits.md).
+
+## Periodic archive collection — 2026-11-07
+
+Reference-data resolves the `orekit-data` main branch to an immutable commit. It verifies each
+file's git blob and SHA-256, validates the formats and the leap-second/UT1 consistency, and
+publishes a new archive SHA-256. The pinned-commit and verified-digest rule still applies to each
+snapshot. Orekit's EOP history includes trailing date-only rows, so coverage is taken from the UT1
+rows themselves. See [reference archive](../../backend/reference-archive.md).

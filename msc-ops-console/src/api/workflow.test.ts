@@ -44,11 +44,12 @@ describe('workflow provenance and partial failures', () => {
     expect(resolveRole('/fe-api/planning', 'GET', '/api/planning/runs/run/camera/7')).toBe('operator1')
     expect(resolveRole('/fe-api/planning', 'POST', '/api/planning/runs/run/camera/7')).toBe('requester')
   })
-  it('grants read-only workflow paths operator access without granting new mutations', () => {
+  it('grants workflow reads operator access and leaves unlisted mutations at requester', () => {
     expect(resolveRole('/fe-api/control', 'GET', '/api/command-loads/image/simulation-release')).toBe('operator1')
-    expect(resolveRole('/fe-api/control', 'POST', '/api/command-loads/image/simulation-release')).toBe('requester')
     expect(resolveRole('/fe-api/product', 'GET', '/api/products/simulation-source-packages/product')).toBe('operator1')
     expect(resolveRole('/fe-api/planning', 'GET', '/api/planning/input-attempts/attempt/runs')).toBe('operator1')
-    expect(resolveRole('/fe-api/planning', 'POST', '/api/planning/runs/run/simulation-commit')).toBe('requester')
+    // Only the explicitly listed V1 steps are elevated (see devProxy.test.ts); anything else stays least-privilege.
+    expect(resolveRole('/fe-api/control', 'POST', '/api/command-loads/image/approvals/revoke')).toBe('requester')
+    expect(resolveRole('/fe-api/planning', 'POST', '/api/planning/runs/run/schedule')).toBe('requester')
   })
 })

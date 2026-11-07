@@ -38,6 +38,13 @@ public class SafetyApi {
         "safety-policy:" + actor.getName(), key, policy, () -> safety.configure(policy));
   }
 
+  // Read-only view of the active policy, so operators can see how many recovery approvals
+  // (recoveryApprovals) a frozen latch needs. 404 when no policy was configured.
+  @GetMapping("/api/safety-policies/{craft}")
+  public StateStore.State<SafetyPolicy> policy(@PathVariable String craft) {
+    return safety.policyState(craft);
+  }
+
   @GetMapping({"/api/safety/{craft}", "/internal/safety/{craft}"})
   public StateStore.State<SafetyLatch> state(@PathVariable String craft) {
     return safety.state(craft);

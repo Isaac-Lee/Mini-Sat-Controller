@@ -1,4 +1,4 @@
-export type ConsoleTab = 'overview' | 'map' | 'request' | 'workflow' | 'timeline' | 'monitor' | 'authority' | 'product'
+export type ConsoleTab = 'overview' | 'map' | 'request' | 'workflow' | 'timeline' | 'monitor' | 'authority' | 'product' | 'actions'
 const SERVICES: Array<{ name: string; role: string; input: string; output: string; tab: ConsoleTab }> = [
   { name: 'Reference Data', role: '공개 궤도·지명·기준 자료 보존', input: '외부 GP/TLE와 승인된 지명', output: '출처·epoch·해시가 붙은 자료', tab: 'map' },
   { name: 'Flight Dynamics', role: '언제 어디에 있는지 계산', input: '궤도·시각·목표·카메라 모델', output: '궤적·접근 기회·샘플 촬영 영역', tab: 'map' },

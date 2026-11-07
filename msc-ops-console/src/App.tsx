@@ -4,6 +4,7 @@ import type { EphemerisDocument, MissionInstant, OrbitSnapshot, RequestState, Tr
 import { DEMO_TLE_URL } from './demo/backend'
 import { DemoCallLog } from './components/DemoCallLog'
 import { MapView } from './components/MapView'
+import { MissionActionsPanel } from './components/MissionActionsPanel'
 import { loadFootprints, type FootprintOverlay } from './api/footprints'
 import { Timeline } from './components/Timeline'
 import { LiveClock } from './components/LiveClock'
@@ -34,6 +35,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'monitor', label: '모니터링' },
   { id: 'authority', label: '승인·안전' },
   { id: 'product', label: '제품' },
+  { id: 'actions', label: '임무 조작' },
 ]
 
 function phaseFromError(error: unknown): Phase {
@@ -422,6 +424,12 @@ export default function App() {
           <AuthorityPanel key={inspectionCraft} initialSpacecraftId={inspectionCraft} offset={taiUtcOffset.offset} />
         </main>
       )}
+
+      {/* Kept mounted (hidden) so switching to 승인·안전 mid-flow keeps the step progress; a new
+          request starts a fresh flow. */}
+      <main className="layout single" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden={tab !== 'actions'}>
+        <MissionActionsPanel key={selectedRequest?.id ?? 'none'} selectedRequest={selectedRequest} />
+      </main>
 
       {tab === 'product' && (
         <main className="layout single" id="panel-product" role="tabpanel" aria-labelledby="tab-product">

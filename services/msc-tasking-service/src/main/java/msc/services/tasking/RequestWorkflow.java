@@ -245,7 +245,12 @@ public final class RequestWorkflow implements EventHandler {
         "request",
         current.id(),
         current.version(),
-        change(old, next, evidence.assessmentReference()));
+        change(
+            old,
+            next,
+            evidence.scope() == null
+                ? evidence.assessmentReference()
+                : evidence.scope() + ": " + evidence.assessmentReference()));
     if (eligible)
       store.event(
           complete ? "RequestFulfilled" : "RequestPartiallyFulfilled",
