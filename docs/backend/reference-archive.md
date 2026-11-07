@@ -26,8 +26,10 @@ All data is real. Nothing in production or test code makes up leap seconds or EO
 - Coverage: the snapshot is rejected if the collection time is outside `[EOP start, expiresAt)`.
 
 Any failure deletes the temporary `.part` file, so nothing reaches
-`<archive-dir>/<commit>/time-frames.zip`, and the current snapshot is left as it was. Transport
-failures (`IOException`) are retried after one hour. Invalid content pauses collection until an
+`<archive-dir>/<commit>/time-frames.zip`, and the current snapshot is left as it was. Transport and
+database failures (`IOException`, `DataAccessException`) are retried after one hour. If a
+snapshot is already stored but its archive file is missing or its digest has changed, the next
+run rebuilds the file. Invalid content pauses collection until an
 ADMIN calls `POST /api/reference-archive/resume`. Collection is off until that same call is made
 the first time.
 
@@ -85,14 +87,16 @@ differ), so its digest is new even for the same commit.
 
 ## Kubernetes
 
-`scripts/render-k8s.py` mounts the `orekit` volume's `snapshots` subPath read-write at
-`/orekit/snapshots`, for reference-data only, and sets `MSC_REFERENCE_ARCHIVE_DIR`. The collector
+With `--reference-archive-writer` (opt-in), `scripts/render-k8s.py` mounts the `orekit`
+volume's `snapshots` subPath read-write at `/orekit/snapshots`, for reference-data only, and sets
+`MSC_REFERENCE_ARCHIVE_DIR`. Without that flag, reference-data has no mount, and enabling
+collection only records a retried write error. A read-only kind mount must not use the flag. The collector
 is an in-process `@Scheduled` task: it runs every 5 minutes, takes a 6-hour cooldown with a DB
 lease, and is replica-safe. There is no separate CronJob. Two pods share the volume, so the PVC
 needs ReadWriteMany, or both pods must be on one node (local kind uses hostPath).
 
 Resource estimate: no change to the 256Mi/250m request or the 512Mi/2 CPU limit. A new commit
-costs about 3.8 MB of downloaded bytes held twice (raw files and zip), plus one Orekit EOP load
+costs about 3.8 MB (one 20-minute DB lease covers five 150 s-bounded requests) of downloaded bytes held twice (raw files and zip), plus one Orekit EOP load
 (about 20 000 entries) that is released after validation. Measurement still to do: record JVM
 heap and CPU around one real collection in the cluster and compare them with this estimate.
 

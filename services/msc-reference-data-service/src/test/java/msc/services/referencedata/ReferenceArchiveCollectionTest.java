@@ -83,6 +83,13 @@ class ReferenceArchiveCollectionTest {
     verify(provider, times(1)).download(COMMIT, ReferenceArchive.FINALS);
     assertEquals(1, events("ReferenceSnapshotPublished"));
     assertEquals(1, store.history(ReferenceArchiveApi.KIND, current.snapshot().reference().id().value()).size());
+    // A lost archive file is rebuilt with identical bytes on the next run.
+    Files.delete(Path.of(current.archivePath()));
+    api.refresh();
+    assertEquals(
+        current.archiveSha256(),
+        ReferenceArchive.sha256(Files.readAllBytes(Path.of(current.archivePath()))));
+    assertEquals(1, events("ReferenceSnapshotPublished"));
     // Cooldown applies to the scheduled path only.
     assertTrue(api.claim(false).isEmpty());
   }

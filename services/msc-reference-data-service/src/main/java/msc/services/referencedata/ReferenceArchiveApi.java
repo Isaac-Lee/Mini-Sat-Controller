@@ -91,11 +91,12 @@ public class ReferenceArchiveApi {
     assessFreshness();
   }
 
-  // Six-hour cooldown; orekit-data publishes roughly monthly. Lease covers three bounded requests.
+  // Six-hour cooldown; orekit-data publishes roughly monthly. The 20-minute lease covers five
+  // sequential 150 s-bounded requests plus validation.
   Optional<UUID> claim(boolean ignoreCooldown) {
     var token = UUID.randomUUID();
     return db.update(
-                "UPDATE reference_archive_control SET lease_token=?,lease_until=now()+interval '10"
+                "UPDATE reference_archive_control SET lease_token=?,lease_until=now()+interval '20"
                     + " minutes',next_attempt_at=now()+interval '6 hours' WHERE source=? AND"
                     + " enabled AND NOT paused AND (lease_until IS NULL OR lease_until<now())"
                     + (ignoreCooldown ? "" : " AND next_attempt_at<=now()"),
@@ -111,7 +112,9 @@ public class ReferenceArchiveApi {
       String commit = provider.latestCommit();
       String id = "orekit-data-" + commit;
       var known = store.find(KIND, id, ArchiveSnapshot.class);
-      var record = known.isPresent() ? known.get().body() : download(commit, id);
+      // Re-create the deterministic archive if the volume lost or altered it.
+      var record =
+          known.isPresent() && intact(known.get().body()) ? known.get().body() : download(commit, id);
       store.transaction(
           () -> {
             var current =
@@ -121,7 +124,11 @@ public class ReferenceArchiveApi {
                     (r, n) -> Optional.ofNullable(r.getString(1)),
                     SOURCE,
                     token);
-            if (current.isEmpty()) return null;
+            if (current.isEmpty()) {
+              LoggerFactory.getLogger(ReferenceArchiveApi.class)
+                  .warn("Reference archive lease lost; {} not published", id);
+              return null;
+            }
             if (store.find(KIND, id, ArchiveSnapshot.class).isEmpty()) {
               var saved = store.create(KIND, id, record);
               store.event(
@@ -146,7 +153,9 @@ public class ReferenceArchiveApi {
     } catch (Exception error) {
       if (error instanceof InterruptedException) Thread.currentThread().interrupt();
       boolean transport =
-          error instanceof java.io.IOException || error instanceof InterruptedException;
+          error instanceof java.io.IOException
+              || error instanceof InterruptedException
+              || error instanceof org.springframework.dao.DataAccessException;
       String message = error.getClass().getSimpleName() + ": " + error.getMessage();
       // Transport failures retry after an hour; invalid content waits for operator review.
       db.update(
@@ -157,6 +166,17 @@ public class ReferenceArchiveApi {
           transport,
           SOURCE,
           token);
+    }
+  }
+
+  static boolean intact(ArchiveSnapshot snapshot) {
+    try {
+      var path = java.nio.file.Path.of(snapshot.archivePath());
+      return java.nio.file.Files.isRegularFile(path)
+          && ReferenceArchive.sha256(java.nio.file.Files.readAllBytes(path))
+              .equals(snapshot.archiveSha256());
+    } catch (java.io.IOException error) {
+      return false;
     }
   }
 
@@ -198,11 +218,13 @@ public class ReferenceArchiveApi {
                   "SELECT last_freshness FROM reference_archive_control WHERE source=? FOR UPDATE",
                   String.class,
                   SOURCE);
-          var state = ReferenceArchive.freshness(clock.now(), status.current());
-          if (state.name().equals(previous)) return null;
+          var state = status.freshness();
+          // Keyed by snapshot so a newer but still stale snapshot is announced too.
+          String key = status.current().snapshot().reference().id().value() + ":" + state;
+          if (key.equals(previous)) return null;
           db.update(
               "UPDATE reference_archive_control SET last_freshness=? WHERE source=?",
-              state.name(),
+              key,
               SOURCE);
           if (state != Freshness.FRESH)
             store.event(

@@ -35,8 +35,13 @@ public class OrekitDataClient {
 
   public String latestCommit() throws IOException, InterruptedException {
     var body = send(request(PROJECT + "/repository/branches/main").GET().build(), 65536);
-    String commit = json.read(new String(body.body(), StandardCharsets.UTF_8), JsonNode.class)
-        .path("commit").path("id").asText("");
+    String commit;
+    try {
+      commit = json.read(new String(body.body(), StandardCharsets.UTF_8), JsonNode.class)
+          .path("commit").path("id").asText("");
+    } catch (RuntimeException error) {
+      throw new IOException("orekit-data branch response is not JSON", error);
+    }
     if (!commit.matches("[0-9a-f]{40}")) throw new IOException("orekit-data branch has no commit");
     return commit;
   }
