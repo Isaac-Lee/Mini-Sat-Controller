@@ -249,6 +249,41 @@ export function resetDemoBackend() {
   listeners.forEach((l) => l(calls))
 }
 
+// ---- demo footprints: obviously synthetic 2 km squares stepping across the AOI ----
+
+function demoFootprint(evaluationId: string, now: number) {
+  const area = requestFor(owner(evaluationId), now).r.area ?? fail(404, 'no area')
+  const rad = Math.PI / 180
+  const lat = (area.south + area.north) / 2
+  const widthMeters = 6378137 * Math.cos(lat * rad) * (area.east - area.west) * rad
+  const heightMeters = 6378137 * (area.north - area.south) * rad
+  const aoiMapping = {
+    mapping: 'WGS84_LOCAL_LINEAR_RECTANGLE_V1',
+    environment: 'SIMULATION',
+    approximationNote: 'DEMO 합성 footprint — 실제 투영 계산 결과가 아닙니다.',
+    centerLatitudeDegrees: lat,
+    centerLongitudeDegrees: (area.west + area.east) / 2,
+    widthMeters,
+    heightMeters,
+  }
+  const offset = evaluationId.endsWith('-1') ? -1 : 1
+  const samples = [-2, -1, 0, 1, 2].map((k) => {
+    const e = k * widthMeters * 0.15
+    const n = offset * heightMeters * 0.1
+    return {
+      instant: tai(now + k * 1000),
+      outcome: 'COMPUTED',
+      footprintCorners: [[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]].map(([de, dn]) => ({ eastMeters: e + de, northMeters: n + dn })),
+      coverageFraction: 0.1,
+    }
+  })
+  const scope = 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE'
+  return {
+    manifest: { id: evaluationId, query: { area }, aoiMapping, scope },
+    result: { id: evaluationId, aoiMapping, samples, scope },
+  }
+}
+
 // ---- workflow evidence derived from a request id ----
 
 function requestFor(id: string, now: number) {
@@ -455,9 +490,13 @@ const routes: Array<[string, string, RegExp, Handler]> = [
     id: m[1],
     body: {
       scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE',
-      candidates: [1, 3].map((n) => ({ candidateId: `${owner(m[1])}~cand-${n}`, cameraResult: { body: { scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } })),
+      candidates: [1, 3].map((n) => ({ candidateId: `${owner(m[1])}~cand-${n}`, cameraResult: { id: `${owner(m[1])}~fp-${n}`, body: { id: `${owner(m[1])}~fp-${n}`, scope: 'SAMPLED_FOOTPRINT_NOT_CONTINUOUS_EXPOSURE', sampleCount: 10 } } })),
     },
   })],
+
+  // Flight Dynamics sampled footprints (demo: synthetic squares inside the request AOI)
+  ['flight', 'GET', /^\/api\/camera-footprint-evaluations\/([^/]+)$/, (m, { now }) => demoFootprint(m[1], now).manifest],
+  ['flight', 'GET', /^\/api\/camera-footprint-evaluations\/([^/]+)\/result$/, (m, { now }) => demoFootprint(m[1], now).result],
 
   // Spacecraft Control
   ['control', 'GET', /^\/api\/command-loads\/([^/]+)\/(simulation-release|simulation-delivery|simulation-execution)$/, (m, { now }) => {
