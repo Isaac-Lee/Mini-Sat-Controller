@@ -94,7 +94,7 @@ export interface Criteria {
   maximumCloudFraction: number
 }
 
-export type InteractionPreference = 'AUTO' | 'CONFIRM'
+export type InteractionPreference = 'AUTO' | 'ASSISTED' | 'ADVANCED'
 
 export type RequestStatus =
   | 'RECEIVED'
@@ -109,12 +109,12 @@ export type RequestStatus =
 
 export interface ObservationRequest {
   id: { value: string }
-  aoiId: { value: string } | null
+  resolvedAoi: { value: string } | null
   revision: number
-  effectiveCriteriaJson: string
+  fulfillmentCriteria: string
   deadline: MissionInstant | null
   requestedPriority: number
-  preference: InteractionPreference
+  interactionPreference: InteractionPreference
   status: RequestStatus
 }
 
@@ -148,6 +148,15 @@ export interface Submission {
   deadline: MissionInstant | null
   priority: number
   preference: InteractionPreference
+}
+
+// Reference-data gazetteer entry (GET /api/places?target= — exact normalized alias match).
+export interface Place {
+  id: string
+  version: number
+  aliases: string[]
+  area: Area
+  approvalReference: string
 }
 
 // ---- Monitoring (monitor-ui) ----
