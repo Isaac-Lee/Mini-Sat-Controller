@@ -4,6 +4,12 @@ export interface MissionInstant {
   scale: 'TAI' | 'UTC'
 }
 
+// POST /api/time/{utc-to-tai,tai-to-utc}: utc is zone-less ISO-8601, a leap second is second 60.
+export interface TimeConversions {
+  conversions: Array<{ tai: MissionInstant; utc: string }>
+  referenceArchiveSha256: string
+}
+
 export interface MeanElements {
   noradId: number
   name: string

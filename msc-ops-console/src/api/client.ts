@@ -80,11 +80,22 @@ export const api = {
       body: JSON.stringify({ snapshotId }),
     }),
 
-  utcToTai: (utc: string) =>
-    request<import('./types').MissionInstant>(`${FLIGHT}/internal/time/utc-to-tai`, {
+  // Public batch conversion through the pinned leap-second archive (POST /api/time/*).
+  utcToTai: async (utc: string) =>
+    (await api.convertUtc([utc])).conversions[0].tai,
+
+  convertUtc: (utc: string[]) =>
+    request<import('./types').TimeConversions>(`${FLIGHT}/api/time/utc-to-tai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ utc }),
+    }),
+
+  convertTai: (instants: import('./types').MissionInstant[]) =>
+    request<import('./types').TimeConversions>(`${FLIGHT}/api/time/tai-to-utc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instants }),
     }),
 
   predict: (
