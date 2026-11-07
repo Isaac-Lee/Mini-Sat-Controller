@@ -147,6 +147,9 @@ public final class TaskingContracts {
           || cloudFraction < 0
           || cloudFraction > 1)
         throw new IllegalArgumentException("Invalid measured quality evidence");
+      if ((scope == null) != (environment == null)
+          || ("INTEGRITY_ONLY_SYNTHETIC".equals(scope) && !"SIMULATION".equals(environment)))
+        throw new IllegalArgumentException("Quality evidence scope requires its environment");
     }
   }
 }

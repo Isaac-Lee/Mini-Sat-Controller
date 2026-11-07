@@ -131,8 +131,10 @@ public class SimulationL0Api {
       quicklooks.add(verify(rendered, reference));
     }
     String manifestId = pkg.acquisitionManifest().path("id").asText();
+    // Sorted keys keep the content-addressed report stable across JVMs and retries.
     var report =
-        Map.of(
+        new TreeMap<String, Object>(
+            Map.of(
             "format",
             FORMAT,
             "environment",
@@ -156,7 +158,7 @@ public class SimulationL0Api {
             "coverageBasis",
             "SIMULATION_DECLARED_NOT_MEASURED",
             "quicklooks",
-            quicklooks);
+            quicklooks));
     String assessmentReference;
     try (var input = new ByteArrayInputStream(json.write(report).getBytes(StandardCharsets.UTF_8))) {
       assessmentReference = objects.write("application/json", input);
