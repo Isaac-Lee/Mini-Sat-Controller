@@ -59,11 +59,12 @@ docker compose --env-file .local/msa.env -f deploy/local/compose.yaml up -d --wa
 ```
 
 어느 명령이든 실패하면 다음 단계로 넘어가지 말고 해결하세요. Maven `verify`는
-실제 Testcontainers 통합 테스트를 실행합니다. MinIO에는 Compose healthcheck가
-없으므로 다음으로 별도 확인합니다.
+실제 Testcontainers 통합 테스트를 실행합니다. 로컬 객체 저장소는 S3 호환 게이트웨이
+versitygw(로컬 디렉터리 백엔드)입니다. 고정했던 MinIO 이미지를 더 이상 공개 레지스트리에서
+받을 수 없어 교체했습니다. Compose healthcheck가 있으며 별도로 확인하려면:
 
 ```sh
-curl --fail http://127.0.0.1:59000/minio/health/ready
+curl --fail http://127.0.0.1:59000/health
 ```
 
 ## 3. 한 터미널에서 BE 전체와 FE 실행
@@ -142,7 +143,7 @@ PY
 | Spacecraft Control / Monitoring / Anomaly | 8107 / 8109 / 8110 |
 | Acquisition / Product / Simulator | 8111 / 8112 / 8114 |
 | PostgreSQL / RabbitMQ / RabbitMQ 관리 | 55432 / 55672 / 55673 |
-| MinIO API / 관리 | 59000 / 59001 |
+| S3 호환 객체 저장소 (versitygw) | 59000 |
 
 8108과 8113은 이 실행 묶음에 포함된 실행 서비스가 아닙니다. 모든 서비스 역할 카드가
 보인다고 BE가 정상이라는 뜻은 아니며, 실제 API 오류는 화면에서 별도로 표시됩니다.
